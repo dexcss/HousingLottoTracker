@@ -43,8 +43,15 @@ public static class ChatLotteryParser
         var p = new Parsed();
         if (string.IsNullOrWhiteSpace(message)) return p;
 
-        // Normalise the unicode spaces / nbsp the game sometimes uses.
-        var text = message.Replace('\u00A0', ' ').Trim();
+        // Normalise unicode spaces the game uses (nbsp, narrow nbsp, etc.) to plain
+        // spaces, then collapse runs of whitespace so the regexes match reliably.
+        var text = message
+            .Replace('\u00A0', ' ')   // no-break space
+            .Replace('\u202F', ' ')   // narrow no-break space (used in clock times)
+            .Replace('\u2007', ' ')   // figure space
+            .Replace('\u2060', ' ')   // word joiner
+            .Trim();
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
 
         var em = EntryRx.Match(text);
         if (!em.Success) return p;  // not an entry confirmation
@@ -71,11 +78,14 @@ public static class ChatLotteryParser
     // client's locale; we try a few common layouts and fall back to null.
     private static DateTime? ParseDateTime(string timePart, string datePart)
     {
-        // Normalise "a.m."/"p.m." to "AM"/"PM" for .NET parsing.
+        // Strip periods and internal spaces so "3:00 a.m." -> "3:00am", then
+        // uppercase the meridiem for .NET's "tt" token.
         var t = timePart.ToLowerInvariant()
-            .Replace("a.m.", "AM").Replace("p.m.", "PM")
-            .Replace("am", "AM").Replace("pm", "PM")
-            .Replace(".", "").Trim();
+            .Replace(".", "")
+            .Replace(" ", "")
+            .Replace("am", " AM")
+            .Replace("pm", " PM")
+            .Trim();
 
         var combined = $"{datePart} {t}";
 

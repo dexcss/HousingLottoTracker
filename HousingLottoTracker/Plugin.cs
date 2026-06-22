@@ -212,9 +212,6 @@ public sealed class Plugin : IDalamudPlugin
 
     private void Poll()
     {
-        // Only do real work when a placard is actually open — passive capture.
-        if (!PlacardReader.IsPlacardOpen(GameGui)) return;
-
         var local = ObjectTable.LocalPlayer;
         if (local == null) return;
 
@@ -225,11 +222,37 @@ public sealed class Plugin : IDalamudPlugin
         var world = local.HomeWorld.Value.Name.ExtractText();
         var region = PlacardReader.ResolveRegionCode(DataManager, world);
 
+        // Backfill source: the "Housing Lottery Status" popup (Duty > Timers >
+        // Estate). Available any time during the entry period, so it captures bids
+        // placed before the plugin was installed, and tells us FC-vs-personal.
+        TryCaptureFromStatus(contentId, name, world, region);
+
+        // Primary live source: the placard ("For Sale" window) when open.
+        if (!PlacardReader.IsPlacardOpen(GameGui)) return;
+
         var snap = PlacardReader.Read(GameGui, DataManager, (ushort)ClientState.TerritoryType);
         if (!snap.Valid) return;
 
         var rec = BidStore.CaptureFromPlacard(
             Config.Bids, snap, contentId, name, world, region, AccountKey);
+
+        if (rec != null)
+            PersistBid(rec);
+    }
+
+    private unsafe void TryCaptureFromStatus(ulong contentId, string name, string world, string region)
+    {
+        var text = PlacardReader.FindLotteryStatusText();
+        if (string.IsNullOrEmpty(text)) return;
+
+        var parsed = LotteryStatusParser.Parse(text);
+        if (!parsed.HasEntry) return;
+
+        var territoryId = PlacardReader.DistrictNameToTerritoryId(parsed.District);
+        if (territoryId == 0) territoryId = (ushort)ClientState.TerritoryType;
+
+        var rec = BidStore.CaptureFromStatus(
+            Config.Bids, parsed, territoryId, contentId, name, world, region, AccountKey);
 
         if (rec != null)
             PersistBid(rec);

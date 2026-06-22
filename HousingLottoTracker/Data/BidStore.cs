@@ -197,6 +197,78 @@ public static class BidStore
         return rec;
     }
 
+    // Build/merge a bid from the "Housing Lottery Status" timers popup. Lets a user
+    // backfill a bid placed before installing the plugin, and supplies the FC-vs-
+    // personal flag the chat line lacks. Timing is derived from the cycle clock since
+    // the panel doesn't state an exact results datetime. Returns the record or null.
+    public static BidRecord? CaptureFromStatus(
+        List<BidRecord> bids,
+        LotteryStatusParser.Parsed s,
+        ushort territoryTypeId,
+        ulong contentId,
+        string charName,
+        string worldName,
+        string region,
+        string accountKey)
+    {
+        if (!s.HasEntry || contentId == 0) return null;
+        if (s.Plot <= 0 || s.Ward <= 0) return null;
+
+        var now = DateTime.UtcNow;
+        var cycleId = LottoCycle.CycleIdFor(now);
+
+        var rec = bids.Find(b =>
+            b.ContentId == contentId &&
+            b.TerritoryTypeId == territoryTypeId &&
+            b.Ward == (byte)s.Ward &&
+            b.Plot == (byte)s.Plot &&
+            b.EntryCycleId == cycleId);
+
+        if (rec == null)
+        {
+            rec = new BidRecord
+            {
+                ContentId = contentId,
+                EntryCycleId = cycleId,
+                EntryDateUtc = now,
+            };
+            bids.Add(rec);
+        }
+
+        rec.CharacterName = charName;
+        rec.WorldName = worldName;
+        rec.Region = region;
+        rec.AccountKey = accountKey;
+        rec.TerritoryTypeId = territoryTypeId;
+        if (!string.IsNullOrEmpty(s.District)) rec.District = s.District;
+        rec.Ward = (byte)s.Ward;
+        rec.Plot = (byte)s.Plot;
+        rec.IsFreeCompany = s.IsFreeCompany;   // the panel tells us this directly
+        rec.Phase = LottoPhase.Entry;
+
+        if (s.LotteryNumber >= 0) rec.EntryNumber = s.LotteryNumber;
+
+        rec.Size = s.Size switch
+        {
+            LotteryStatusParser.LottoSizeHint.Small => LottoPlotSize.Small,
+            LotteryStatusParser.LottoSizeHint.Medium => LottoPlotSize.Medium,
+            LotteryStatusParser.LottoSizeHint.Large => LottoPlotSize.Large,
+            _ => rec.Size,
+        };
+
+        // Only fill timing if we don't already have a precise value from a chat
+        // capture (chat gives the exact results datetime; don't overwrite it).
+        if (rec.ResultsAvailableUtc == null)
+        {
+            rec.ResultsAvailableUtc = LottoCycle.ResultsStart(cycleId);
+            rec.ClaimDeadlineUtc = LottoCycle.ClaimDeadline(cycleId);
+        }
+
+        rec.LastSeenUtc = now;
+        if (string.IsNullOrEmpty(rec.Source) || rec.Source == "manual") rec.Source = "Live";
+        return rec;
+    }
+
     // Lazily advance outcomes/timers for stale rows without needing a placard read
     // (e.g. a bid whose claim window simply elapsed). Returns true if anything
     // changed so the caller can persist.

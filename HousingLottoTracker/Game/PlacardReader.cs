@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using HousingLottoTracker.Data;
 
@@ -319,4 +320,54 @@ public static unsafe class PlacardReader
         }
         return string.Empty;
     }
+
+    // Concatenate all visible text nodes of an addon into one blob (newline-joined).
+    public static string ReadAllText(AtkUnitBase* addon)
+    {
+        if (addon == null) return string.Empty;
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
+        {
+            var node = addon->UldManager.NodeList[i];
+            if (node == null || node->Type != NodeType.Text) continue;
+            var t = ((AtkTextNode*)node)->NodeText.ToString();
+            if (!string.IsNullOrWhiteSpace(t)) sb.AppendLine(t.Trim());
+        }
+        return sb.ToString();
+    }
+
+    // Scan all loaded, visible addons for the "Housing Lottery Status" detail popup
+    // (the one opened from Duty > Timers > Estate). We don't rely on a fixed addon
+    // name because it isn't documented in ClientStructs; instead we match on the
+    // text signature. Returns the popup's concatenated text, or "" if not open.
+    public static string FindLotteryStatusText()
+    {
+        try
+        {
+            var mgr = RaptureAtkUnitManager.Instance();
+            if (mgr == null) return string.Empty;
+
+            ref var list = ref mgr->AtkUnitManager.AllLoadedUnitsList;
+            var count = list.Count;
+            for (var i = 0; i < count && i < 256; i++)
+            {
+                var addon = list.Entries[i].Value;
+                if (addon == null || !addon->IsVisible) continue;
+
+                var text = ReadAllText(addon);
+                if (string.IsNullOrEmpty(text)) continue;
+
+                var lower = text.ToLowerInvariant();
+                // Signature unique to the housing lottery status detail panel.
+                if (lower.Contains("lottery number") &&
+                    (lower.Contains("type of entry") || lower.Contains("current entry")))
+                {
+                    return text;
+                }
+            }
+        }
+        catch { /* ignore */ }
+        return string.Empty;
+    }
 }
+
