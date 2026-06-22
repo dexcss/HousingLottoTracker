@@ -24,6 +24,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
+    [PluginService] internal static IGameInteropProvider InteropProvider { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string CommandName = "/hlt";
@@ -34,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem = new("HousingLottoTracker");
     private readonly MainWindow mainWindow;
     private readonly SettingsWindow settingsWindow;
+    private PlacardSaleHook? saleHook;
 
     public string AccountKey { get; }
 
@@ -80,12 +82,19 @@ public sealed class Plugin : IDalamudPlugin
 
         // Route placard node-text dumps to the Dalamud log for diagnostics.
         PlacardReader.DebugLog = msg => Log.Debug(msg);
+
+        // Reliable primary capture: hook the placard sale-info function. If the
+        // signature can't be found (e.g. after a patch), this no-ops and the
+        // text-scrape path in Poll() keeps working.
+        saleHook = new PlacardSaleHook(InteropProvider, Log, OnPlacardSaleInfo);
     }
 
     public void Dispose()
     {
         ChatGui.ChatMessage -= OnChatMessage;
         PlacardReader.DebugLog = null;
+        saleHook?.Dispose();
+        saleHook = null;
         AddonLifecycle.UnregisterListener(OnSelectYesno);
         Framework.Update -= OnUpdate;
         ClientState.Login -= OnLogin;
@@ -260,6 +269,38 @@ public sealed class Plugin : IDalamudPlugin
 
         if (rec != null)
             PersistBid(rec);
+    }
+
+    // Reliable primary capture from the placard sale-info hook. Updates an existing
+    // bid for the viewed plot with the exact deadline and FC flag. Does not create
+    // bids (the hook fires for any placard you look at) — creation stays with the
+    // chat confirmation and the Timers status panel.
+    private void OnPlacardSaleInfo(PlacardSaleHook.SaleInfo info)
+    {
+        try
+        {
+            var contentId = PlayerState.ContentId;
+            if (contentId == 0) return;
+
+            var local = ObjectTable.LocalPlayer;
+            var name = local?.Name.TextValue ?? string.Empty;
+            var world = local?.HomeWorld.Value.Name.ExtractText() ?? string.Empty;
+            var region = PlacardReader.ResolveRegionCode(DataManager, world);
+            var district = PlacardReader.ResolveDistrict(DataManager, info.TerritoryTypeId);
+
+            var rec = BidStore.CaptureFromSaleInfo(
+                Config.Bids, info, district, contentId, name, world, region, AccountKey);
+
+            if (rec != null)
+            {
+                PersistBid(rec);
+                Log.Info($"Housing Lotto Tracker: hook updated {rec.LocationText} ({rec.TypeText}) results {rec.ResultsAvailableUtc:yyyy-MM-dd HH:mm}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "placard sale-info capture failed");
+        }
     }
 
     // Primary capture path: parse the lottery entry confirmation from chat.

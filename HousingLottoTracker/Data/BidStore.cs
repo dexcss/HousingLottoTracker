@@ -274,6 +274,73 @@ public static class BidStore
         return rec;
     }
 
+    // Build/merge a bid from the placard sale-info hook — the most reliable source.
+    // Gives the exact phase-end timestamp (lottery entry deadline = results-open),
+    // tenant type (FC vs personal), and phase, with a precise plot location. Only
+    // records lottery plots. Returns the record, or null if not a trackable bid.
+    public static BidRecord? CaptureFromSaleInfo(
+        List<BidRecord> bids,
+        Game.PlacardSaleHook.SaleInfo info,
+        string district,
+        ulong contentId,
+        string charName,
+        string worldName,
+        string region,
+        string accountKey)
+    {
+        if (contentId == 0) return null;
+        if (!info.IsLottery) return null;                 // only lottery plots
+        if (info.WardId == byte.MaxValue) return null;
+
+        var ward = (byte)(info.WardId + 1);               // hook is 0-based
+        var plot = (byte)(info.PlotId + 1);
+        if (ward == 0 || plot == 0) return null;
+
+        var now = DateTime.UtcNow;
+
+        // Exact deadline from the game = results-open time (entry closes, results begin).
+        DateTime? resultsUtc = info.PhaseEndsAtUtc;
+
+        // Derive the cycle from the precise time when we have it; else from now.
+        var cycleId = resultsUtc != null
+            ? LottoCycle.CycleIdFor(resultsUtc.Value - LottoCycle.EntryLength)
+            : LottoCycle.CycleIdFor(now);
+
+        var rec = bids.Find(b =>
+            b.ContentId == contentId &&
+            b.TerritoryTypeId == info.TerritoryTypeId &&
+            b.Ward == ward &&
+            b.Plot == plot &&
+            b.EntryCycleId == cycleId);
+
+        // The hook fires for ANY placard you view, not just ones you bid on. Only
+        // create a new record if this is an entry you actually placed — we can't tell
+        // that from the hook alone, so we only UPDATE existing records here, and let
+        // the chat/status paths CREATE them. Exception: during results we still only
+        // update. This prevents browsing placards from fabricating bids.
+        if (rec == null) return null;
+
+        rec.CharacterName = charName;
+        rec.WorldName = worldName;
+        rec.Region = region;
+        rec.AccountKey = accountKey;
+        rec.TerritoryTypeId = info.TerritoryTypeId;
+        if (!string.IsNullOrEmpty(district)) rec.District = district;
+        rec.Ward = ward;
+        rec.Plot = plot;
+        rec.IsFreeCompany = info.IsFreeCompany;           // definitive from the game
+        rec.Phase = info.InResults ? LottoPhase.Results : LottoPhase.Entry;
+
+        if (resultsUtc != null)
+        {
+            rec.ResultsAvailableUtc = resultsUtc;
+            rec.ClaimDeadlineUtc = resultsUtc.Value + LottoCycle.ResultsLength;
+        }
+
+        rec.LastSeenUtc = now;
+        return rec;
+    }
+
     // Lazily advance outcomes/timers for stale rows without needing a placard read
     // (e.g. a bid whose claim window simply elapsed). Returns true if anything
     // changed so the caller can persist.
