@@ -77,11 +77,15 @@ public sealed class Plugin : IDalamudPlugin
 
         // Primary capture: the chat confirmation emitted when you submit a bid.
         ChatGui.ChatMessage += OnChatMessage;
+
+        // Route placard node-text dumps to the Dalamud log for diagnostics.
+        PlacardReader.DebugLog = msg => Log.Debug(msg);
     }
 
     public void Dispose()
     {
         ChatGui.ChatMessage -= OnChatMessage;
+        PlacardReader.DebugLog = null;
         AddonLifecycle.UnregisterListener(OnSelectYesno);
         Framework.Update -= OnUpdate;
         ClientState.Login -= OnLogin;

@@ -34,8 +34,11 @@ public static unsafe class PlacardReader
 {
     private const string AddonName = "HousingSignBoard";
 
+    // Optional debug sink set by Plugin; logs raw node text for diagnosing scrapes.
+    public static Action<string>? DebugLog;
+
     public static bool IsPlacardOpen(IGameGui gameGui)
-        => gameGui.GetAddonByName(AddonName, 1) != nint.Zero;
+        => gameGui.GetAddonByName(AddonName, 1) != nint.Zero || FindPlacardAddon() != null;
 
     public static PlacardSnapshot Read(IGameGui gameGui, IDataManager data, ushort currentTerritoryType)
     {
@@ -77,21 +80,55 @@ public static unsafe class PlacardReader
         }
 
         // --- Placard addon text scrape (address, phase, size) ---
+        AtkUnitBase* placard = null;
         nint addr = gameGui.GetAddonByName(AddonName, 1);
         if (addr != nint.Zero)
-        {
-            var addon = (AtkUnitBase*)addr;
-            if (addon != null && addon->IsVisible)
-            {
-                ScrapeSignboard(addon, snap);
-            }
-        }
+            placard = (AtkUnitBase*)addr;
+
+        // Fallback: the visible "For Sale" lottery window may use a different addon
+        // name than expected. Find it by its text signature instead.
+        if (placard == null || !placard->IsVisible)
+            placard = FindPlacardAddon();
+
+        if (placard != null && placard->IsVisible)
+            ScrapeSignboard(placard, snap);
 
         // --- Phase fallback from the global cycle clock ---
         if (snap.Phase == LottoPhase.Unknown)
             snap.Phase = LottoCycle.PhaseFor(DateTime.UtcNow);
 
         return snap;
+    }
+
+    // Find the lottery placard ("For Sale" window) by text signature, since its
+    // addon name may differ from the expected HousingSignBoard.
+    private static AtkUnitBase* FindPlacardAddon()
+    {
+        try
+        {
+            var mgr = RaptureAtkUnitManager.Instance();
+            if (mgr == null) return null;
+
+            ref var list = ref mgr->AtkUnitManager.AllLoadedUnitsList;
+            var count = list.Count;
+            for (var i = 0; i < count && i < 256; i++)
+            {
+                var addon = list.Entries[i].Value;
+                if (addon == null || !addon->IsVisible) continue;
+
+                var text = ReadAllText(addon).ToLowerInvariant();
+                if (text.Length == 0) continue;
+
+                if (text.Contains("selling via lottery")
+                    || text.Contains("accepting entries until")
+                    || (text.Contains("enter lottery") && text.Contains("plot")))
+                {
+                    return addon;
+                }
+            }
+        }
+        catch { /* ignore */ }
+        return null;
     }
 
     // Scrape the signboard's visible text nodes. We can't rely on fixed node indices
@@ -107,6 +144,9 @@ public static unsafe class PlacardReader
             if (string.IsNullOrWhiteSpace(raw)) continue;
             var text = raw.Trim();
             var lower = text.ToLowerInvariant();
+
+            if (DebugLog != null)
+                DebugLog($"[HLT placard node {i}] {text}");
 
             // Phase hints. The placard reads "Selling via lottery. (Current
             // participants: N)" during entry; results wording differs.
@@ -169,6 +209,11 @@ public static unsafe class PlacardReader
                 }
             }
         }
+
+        // If the address line gave us a plot+ward (and the district resolved a
+        // territory id), the snapshot is usable even without HousingManager.
+        if (snap.Ward > 0 && snap.Plot > 0)
+            snap.Valid = true;
     }
 
     // Parse the placard address line "Plot 38, 30th Ward, Shirogane".
