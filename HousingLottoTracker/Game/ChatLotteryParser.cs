@@ -74,6 +74,25 @@ public static class ChatLotteryParser
     private static int ParseInt(string s)
         => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : -1;
 
+    // Parse a generic "...<time> <date>" fragment (e.g. the placard's "Accepting
+    // entries until 2:59 a.m. 6/25/2026.") into a local DateTime, or null.
+    private static readonly Regex AnyDateTimeRx = new(
+        @"(?<time>\d{1,2}:\d{2}\s*[ap]\.?\s?m\.?)\s+(?<date>\d{1,2}/\d{1,2}/\d{4})",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static DateTime? ParseDeadline(string fragment)
+    {
+        if (string.IsNullOrWhiteSpace(fragment)) return null;
+        var norm = fragment
+            .Replace('\u00A0', ' ')
+            .Replace('\u202F', ' ')
+            .Replace('\u2007', ' ');
+        norm = Regex.Replace(norm, @"\s+", " ");
+        var m = AnyDateTimeRx.Match(norm);
+        if (!m.Success) return null;
+        return ParseDateTime(m.Groups["time"].Value, m.Groups["date"].Value);
+    }
+
     // Combine "3:00 a.m." + "6/25/2026" into a local DateTime. The game prints in the
     // client's locale; we try a few common layouts and fall back to null.
     private static DateTime? ParseDateTime(string timePart, string datePart)

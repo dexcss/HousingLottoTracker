@@ -23,6 +23,7 @@ public sealed class PlacardSnapshot
     public int EntryNumber = -1;             // your ticket, if the placard shows it
     public int WinningNumber = -1;           // shown during results
     public bool WonHint;                     // placard text suggests a win
+    public DateTime? ResultsLocal;           // parsed from "Accepting entries until ..."
 }
 
 // Reads the housing lottery placard. The HousingSignBoard addon has no dedicated
@@ -151,6 +152,22 @@ public static unsafe class PlacardReader
             if (lower.Contains("congratulations") || lower.Contains("you have won")
                 || lower.Contains("won the lottery"))
                 snap.WonHint = true;
+
+            // Entry deadline: "Accepting entries until 2:59 a.m. 6/25/2026." The
+            // deadline is one minute before results open, so this gives us the real
+            // results datetime (rounded up to the top of the hour).
+            if (snap.ResultsLocal == null &&
+                (lower.Contains("accepting entries until") || lower.Contains("entries until")))
+            {
+                var dt = ChatLotteryParser.ParseDeadline(text);
+                if (dt != null)
+                {
+                    // 2:59 -> 3:00; round up to the next minute boundary's hour mark.
+                    var d = dt.Value;
+                    if (d.Minute == 59) d = d.AddMinutes(1);
+                    snap.ResultsLocal = d;
+                }
+            }
         }
     }
 

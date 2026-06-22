@@ -92,10 +92,17 @@ public static class BidStore
         if (snap.EntryNumber >= 0) rec.EntryNumber = snap.EntryNumber;   // never overwrite a captured number with -1
         if (snap.WinningNumber >= 0) rec.WinningNumber = snap.WinningNumber;
 
-        // --- Timing (derive from the cycle the bid belongs to) ---
-        var bidCycle = rec.EntryCycleId;
-        rec.ResultsAvailableUtc = LottoCycle.ResultsStart(bidCycle);
-        rec.ClaimDeadlineUtc = LottoCycle.ClaimDeadline(bidCycle);
+        // --- Timing ---
+        // Prefer the exact results time parsed from the placard's "Accepting entries
+        // until ..." line. Only if that's unavailable do we leave it null (we do not
+        // fabricate a date from the cycle clock, which can be a day off).
+        if (snap.ResultsLocal != null)
+        {
+            var resUtc = snap.ResultsLocal.Value.ToUniversalTime();
+            rec.ResultsAvailableUtc = resUtc;
+            rec.ClaimDeadlineUtc = resUtc + LottoCycle.ResultsLength;
+        }
+        // else: leave whatever a prior precise capture set (may stay null).
 
         // --- Outcome inference ---
         // Win: explicit hint, or (winning number known AND matches your entry).
@@ -256,13 +263,11 @@ public static class BidStore
             _ => rec.Size,
         };
 
-        // Only fill timing if we don't already have a precise value from a chat
-        // capture (chat gives the exact results datetime; don't overwrite it).
-        if (rec.ResultsAvailableUtc == null)
-        {
-            rec.ResultsAvailableUtc = LottoCycle.ResultsStart(cycleId);
-            rec.ClaimDeadlineUtc = LottoCycle.ClaimDeadline(cycleId);
-        }
+        // The status panel does NOT state an exact results datetime. Do not
+        // fabricate one from the cycle clock (it can be a day off). Leave the
+        // results/claim fields untouched: they stay null unless a precise source
+        // (the chat confirmation) fills them in. The UI shows "unknown" for null.
+        // (No timing assignment here on purpose.)
 
         rec.LastSeenUtc = now;
         if (string.IsNullOrEmpty(rec.Source) || rec.Source == "manual") rec.Source = "Live";

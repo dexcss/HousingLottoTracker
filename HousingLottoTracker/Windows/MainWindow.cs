@@ -453,6 +453,7 @@ public class MainWindow : Window
     private static string CountdownText(BidRecord b)
     {
         if (b.Outcome is LottoOutcome.Lost or LottoOutcome.Claimed or LottoOutcome.Expired) return "—";
+        if (b.ResultsAvailableUtc == null) return "date unknown";
         if (!b.ResultsOpen) return $"results in {Fmt(b.TimeUntilResults)}";
         var t = b.TimeUntilClaimDeadline;
         return t <= TimeSpan.Zero ? "window closed" : $"claim in {Fmt(t)}";
@@ -485,6 +486,12 @@ public class MainWindow : Window
         if (b.Outcome is LottoOutcome.Lost or LottoOutcome.Claimed or LottoOutcome.Expired)
         {
             ImGui.TextDisabled("—");
+            return;
+        }
+
+        if (b.ResultsAvailableUtc == null)
+        {
+            ImGui.TextDisabled("date unknown");
             return;
         }
 
