@@ -33,7 +33,6 @@ public class SettingsWindow : Window
         ("Ward/Plot", "WardPlot"),
         ("Size", "Size"),
         ("Type (FC/Personal)", "Type"),
-        ("Entrants", "Entrants"),
         ("Your number", "EntryNumber"),
         ("Entered date", "EntryDate"),
         ("Results date", "ResultsDate"),
@@ -51,7 +50,6 @@ public class SettingsWindow : Window
         "WardPlot" => c.ColWardPlot,
         "Size" => c.ColSize,
         "Type" => c.ColType,
-        "Entrants" => c.ColEntrants,
         "EntryNumber" => c.ColEntryNumber,
         "EntryDate" => c.ColEntryDate,
         "ResultsDate" => c.ColResultsDate,
@@ -72,7 +70,6 @@ public class SettingsWindow : Window
             case "WardPlot": c.ColWardPlot = v; break;
             case "Size": c.ColSize = v; break;
             case "Type": c.ColType = v; break;
-            case "Entrants": c.ColEntrants = v; break;
             case "EntryNumber": c.ColEntryNumber = v; break;
             case "EntryDate": c.ColEntryDate = v; break;
             case "ResultsDate": c.ColResultsDate = v; break;

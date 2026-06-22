@@ -89,7 +89,6 @@ public static class BidStore
 
         // --- Lottery state ---
         rec.Phase = snap.Phase;
-        if (snap.EntrantCount >= 0) rec.EntrantCount = snap.EntrantCount;
         if (snap.EntryNumber >= 0) rec.EntryNumber = snap.EntryNumber;   // never overwrite a captured number with -1
         if (snap.WinningNumber >= 0) rec.WinningNumber = snap.WinningNumber;
 
@@ -125,6 +124,76 @@ public static class BidStore
         rec.LastSeenUtc = now;
         rec.Source = "Live";
         _ = isNew; // (kept for clarity / future telemetry)
+        return rec;
+    }
+
+    // Build/merge a bid from the chat confirmation emitted at entry time. This is the
+    // primary capture path — the message carries plot, ward, district, your lottery
+    // number, and the exact results time. Returns the record (caller persists).
+    public static BidRecord CaptureFromChat(
+        List<BidRecord> bids,
+        ChatLotteryParser.Parsed p,
+        ushort territoryTypeId,
+        ulong contentId,
+        string charName,
+        string worldName,
+        string region,
+        string accountKey,
+        bool isFreeCompany)
+    {
+        var now = DateTime.UtcNow;
+
+        // Prefer the precise results time from chat; else derive from the cycle clock.
+        DateTime? resultsUtc = p.ResultsLocal?.ToUniversalTime();
+        var cycleId = resultsUtc != null
+            ? LottoCycle.CycleIdFor(resultsUtc.Value - LottoCycle.EntryLength)  // back out entry start
+            : LottoCycle.CycleIdFor(now);
+
+        var rec = bids.Find(b =>
+            b.ContentId == contentId &&
+            b.TerritoryTypeId == territoryTypeId &&
+            b.Ward == (byte)p.Ward &&
+            b.Plot == (byte)p.Plot &&
+            b.EntryCycleId == cycleId);
+
+        if (rec == null)
+        {
+            rec = new BidRecord
+            {
+                ContentId = contentId,
+                EntryCycleId = cycleId,
+                EntryDateUtc = now,
+            };
+            bids.Add(rec);
+        }
+
+        rec.CharacterName = charName;
+        rec.WorldName = worldName;
+        rec.Region = region;
+        rec.AccountKey = accountKey;
+        rec.TerritoryTypeId = territoryTypeId;
+        rec.District = string.IsNullOrEmpty(p.District) ? rec.District : p.District;
+        rec.Ward = (byte)p.Ward;
+        rec.Plot = (byte)p.Plot;
+        rec.IsFreeCompany = isFreeCompany;
+        rec.Phase = LottoPhase.Entry;
+
+        if (p.LotteryNumber >= 0) rec.EntryNumber = p.LotteryNumber;
+
+        // Timing: use the exact chat datetime when present.
+        if (resultsUtc != null)
+        {
+            rec.ResultsAvailableUtc = resultsUtc;
+            rec.ClaimDeadlineUtc = resultsUtc.Value + LottoCycle.ResultsLength;
+        }
+        else
+        {
+            rec.ResultsAvailableUtc = LottoCycle.ResultsStart(cycleId);
+            rec.ClaimDeadlineUtc = LottoCycle.ClaimDeadline(cycleId);
+        }
+
+        rec.LastSeenUtc = now;
+        rec.Source = "Live";
         return rec;
     }
 
@@ -167,7 +236,6 @@ public static class BidStore
         bool isFreeCompany,
         DateTime entryDateUtc,
         int entryNumber,
-        int entrantCount,
         string notes)
     {
         var cycleId = LottoCycle.CycleIdFor(entryDateUtc);
@@ -187,7 +255,6 @@ public static class BidStore
             EntryDateUtc = entryDateUtc,
             EntryCycleId = cycleId,
             EntryNumber = entryNumber < 0 ? -1 : entryNumber,
-            EntrantCount = entrantCount < 0 ? -1 : entrantCount,
             Notes = notes,
             Source = "manual",
             Phase = LottoCycle.PhaseFor(DateTime.UtcNow),

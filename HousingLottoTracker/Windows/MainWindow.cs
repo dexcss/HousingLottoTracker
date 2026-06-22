@@ -38,7 +38,6 @@ public class MainWindow : Window
     private int mSizeIdx;              // 0 Small, 1 Medium, 2 Large
     private bool mIsFc;
     private int mEntryNumber = -1;
-    private int mEntrants = -1;
     private string mEntryDate = DateTime.Now.ToString("yyyy-MM-dd");
     private string mCharName = "";
     private string mWorldName = "";
@@ -46,12 +45,12 @@ public class MainWindow : Window
     private string mAddResult = "";
 
     // ---- Sorting ----
-    private enum SortCol { Character, Region, District, WardPlot, Size, Type, Entrants, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome }
+    private enum SortCol { Character, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome }
     private SortCol sort = SortCol.EntryDate;
     private bool sortAsc = false; // newest first by default
 
     // Column identity, mirroring the config toggles.
-    private enum Col { Character, Region, District, WardPlot, Size, Type, Entrants, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome, Notes }
+    private enum Col { Character, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome, Notes }
 
     private List<Col> EnabledColumns(Configuration c)
     {
@@ -62,7 +61,6 @@ public class MainWindow : Window
         if (c.ColWardPlot) list.Add(Col.WardPlot);
         if (c.ColSize) list.Add(Col.Size);
         if (c.ColType) list.Add(Col.Type);
-        if (c.ColEntrants) list.Add(Col.Entrants);
         if (c.ColEntryNumber) list.Add(Col.EntryNumber);
         if (c.ColEntryDate) list.Add(Col.EntryDate);
         if (c.ColResultsDate) list.Add(Col.ResultsDate);
@@ -95,7 +93,6 @@ public class MainWindow : Window
         Col.WardPlot => "Ward/Plot",
         Col.Size => "Size",
         Col.Type => "Type",
-        Col.Entrants => "Entrants",
         Col.EntryNumber => "Your #",
         Col.EntryDate => "Entered",
         Col.ResultsDate => "Results",
@@ -114,7 +111,6 @@ public class MainWindow : Window
         Col.WardPlot => SortCol.WardPlot,
         Col.Size => SortCol.Size,
         Col.Type => SortCol.Type,
-        Col.Entrants => SortCol.Entrants,
         Col.EntryNumber => SortCol.EntryNumber,
         Col.EntryDate => SortCol.EntryDate,
         Col.ResultsDate => SortCol.ResultsDate,
@@ -216,9 +212,6 @@ public class MainWindow : Window
 
         ImGui.SetNextItemWidth(110f * s);
         ImGui.InputInt("Your number", ref mEntryNumber);
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(110f * s);
-        ImGui.InputInt("Entrants", ref mEntrants);
 
         ImGui.SetNextItemWidth(160f * s);
         ImGui.InputText("Character", ref mCharName, 64);
@@ -270,7 +263,7 @@ public class MainWindow : Window
         var rec = BidStore.CreateManual(
             contentId, mCharName, mWorldName, region, plugin.AccountKey,
             territoryId, districtName, (byte)mWard, (byte)mPlot,
-            size, mIsFc, entryUtc, mEntryNumber, mEntrants, mNotes);
+            size, mIsFc, entryUtc, mEntryNumber, mNotes);
 
         var err = plugin.AddManualBid(rec);
         mAddResult = string.IsNullOrEmpty(err) ? "Saved." : err;
@@ -279,7 +272,7 @@ public class MainWindow : Window
     private void ResetAddForm()
     {
         mDistrictIdx = 0; mWard = 1; mPlot = 1; mSizeIdx = 0; mIsFc = false;
-        mEntryNumber = -1; mEntrants = -1;
+        mEntryNumber = -1;
         mEntryDate = DateTime.Now.ToString("yyyy-MM-dd");
         mCharName = ""; mWorldName = ""; mNotes = ""; mAddResult = "";
     }
@@ -313,7 +306,6 @@ public class MainWindow : Window
             SortCol.WardPlot => (a, b) => a.Ward != b.Ward ? a.Ward.CompareTo(b.Ward) : a.Plot.CompareTo(b.Plot),
             SortCol.Size => (a, b) => ((byte)a.Size).CompareTo((byte)b.Size),
             SortCol.Type => (a, b) => a.IsFreeCompany.CompareTo(b.IsFreeCompany),
-            SortCol.Entrants => (a, b) => a.EntrantCount.CompareTo(b.EntrantCount),
             SortCol.EntryNumber => (a, b) => a.EntryNumber.CompareTo(b.EntryNumber),
             SortCol.EntryDate => (a, b) => a.EntryDateUtc.CompareTo(b.EntryDateUtc),
             SortCol.ResultsDate => (a, b) => Nullable.Compare(a.ResultsAvailableUtc, b.ResultsAvailableUtc),
@@ -402,7 +394,6 @@ public class MainWindow : Window
         Col.WardPlot => 0.8f,
         Col.Size => 0.7f,
         Col.Type => 0.7f,
-        Col.Entrants => 0.7f,
         Col.EntryNumber => 0.6f,
         Col.EntryDate => 1.0f,
         Col.ResultsDate => 1.0f,
@@ -449,7 +440,6 @@ public class MainWindow : Window
         Col.WardPlot => $"W{b.Ward} P{b.Plot}",
         Col.Size => b.SizeText,
         Col.Type => b.TypeText,
-        Col.Entrants => b.EntrantCount < 0 ? "?" : b.EntrantCount.ToString(),
         Col.EntryNumber => b.EntryNumber < 0 ? "—" : b.EntryNumber.ToString(),
         Col.EntryDate => b.EntryDateUtc.ToLocalTime().ToString("yyyy-MM-dd"),
         Col.ResultsDate => b.ResultsAvailableUtc?.ToLocalTime().ToString("yyyy-MM-dd") ?? "?",
@@ -478,7 +468,6 @@ public class MainWindow : Window
             case Col.WardPlot: ImGui.TextUnformatted($"W{b.Ward} P{b.Plot}"); break;
             case Col.Size: ImGui.TextUnformatted(b.SizeText); break;
             case Col.Type: ImGui.TextUnformatted(b.TypeText); break;
-            case Col.Entrants: ImGui.TextUnformatted(b.EntrantCount < 0 ? "?" : b.EntrantCount.ToString()); break;
             case Col.EntryNumber: ImGui.TextUnformatted(b.EntryNumber < 0 ? "—" : b.EntryNumber.ToString()); break;
             case Col.EntryDate: ImGui.TextUnformatted(b.EntryDateUtc.ToLocalTime().ToString("yyyy-MM-dd")); break;
             case Col.ResultsDate:

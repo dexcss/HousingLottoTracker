@@ -31,7 +31,6 @@ public class Configuration : IPluginConfiguration
     public bool ColWardPlot = true;
     public bool ColSize = true;
     public bool ColType = true;          // FC / Personal
-    public bool ColEntrants = true;
     public bool ColEntryNumber = true;
     public bool ColEntryDate = true;
     public bool ColResultsDate = true;

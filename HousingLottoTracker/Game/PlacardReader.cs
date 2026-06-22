@@ -19,7 +19,6 @@ public sealed class PlacardSnapshot
     public LottoPlotSize Size = LottoPlotSize.Unknown;
     public bool IsFreeCompany;               // best-effort; default personal
     public LottoPhase Phase = LottoPhase.Unknown;
-    public int EntrantCount = -1;
     public int EntryNumber = -1;             // your ticket, if the placard shows it
     public int WinningNumber = -1;           // shown during results
     public bool WonHint;                     // placard text suggests a win
@@ -75,7 +74,7 @@ public static unsafe class PlacardReader
             catch { /* leave location unknown */ }
         }
 
-        // --- Placard addon text scrape (entrants, numbers, phase, size) ---
+        // --- Placard addon text scrape (address, phase, size) ---
         nint addr = gameGui.GetAddonByName(AddonName, 1);
         if (addr != nint.Zero)
         {
@@ -107,15 +106,16 @@ public static unsafe class PlacardReader
             var text = raw.Trim();
             var lower = text.ToLowerInvariant();
 
-            // Phase hints.
-            if (lower.Contains("entries being accepted") || lower.Contains("entry period")
-                || lower.Contains("accepting entries"))
+            // Phase hints. The placard reads "Selling via lottery. (Current
+            // participants: N)" during entry; results wording differs.
+            if (lower.Contains("selling via lottery") || lower.Contains("accepting entries")
+                || lower.Contains("current participants"))
                 snap.Phase = LottoPhase.Entry;
-            if (lower.Contains("results") || lower.Contains("winning number")
-                || lower.Contains("vacant (results")) // defensive
+            if (lower.Contains("winning number") || lower.Contains("results are in")
+                || lower.Contains("lottery results"))
                 snap.Phase = LottoPhase.Results;
 
-            // Size hints.
+            // Size hints (placard "Plot Size" field shows Small/Medium/Large).
             if (snap.Size == LottoPlotSize.Unknown)
             {
                 if (lower.Contains("small")) snap.Size = LottoPlotSize.Small;
@@ -123,18 +123,17 @@ public static unsafe class PlacardReader
                 else if (lower.Contains("large")) snap.Size = LottoPlotSize.Large;
             }
 
-            // FC vs personal hint.
-            if (lower.Contains("free company")) snap.IsFreeCompany = true;
+            // FC vs personal. Placard: "Available to free companies. Available to
+            // private buyers." If only FCs are eligible, treat as an FC plot.
+            if (lower.Contains("unavailable to private") || lower.Contains("free companies only"))
+                snap.IsFreeCompany = true;
 
-            // Entrant count, e.g. "Current Entries: 37" / "Number of Entries: 37".
-            if ((lower.Contains("entries") || lower.Contains("entrants")) && snap.EntrantCount < 0)
-            {
-                var n = ExtractFirstInt(text);
-                if (n >= 0) snap.EntrantCount = n;
-            }
+            // Address line: "Plot 38, 30th Ward, Shirogane".
+            if (lower.Contains("ward") && lower.Contains("plot"))
+                ParseAddress(text, snap);
 
-            // Your entry number, e.g. "Your Entry Number: 12".
-            if ((lower.Contains("your entry") || lower.Contains("your number")) && snap.EntryNumber < 0)
+            // Your entry number, if the placard ever shows it.
+            if ((lower.Contains("your entry") || lower.Contains("your lottery number")) && snap.EntryNumber < 0)
             {
                 var n = ExtractFirstInt(text);
                 if (n >= 0) snap.EntryNumber = n;
@@ -152,6 +151,30 @@ public static unsafe class PlacardReader
                 || lower.Contains("won the lottery"))
                 snap.WonHint = true;
         }
+    }
+
+    // Parse the placard address line "Plot 38, 30th Ward, Shirogane".
+    private static void ParseAddress(string text, PlacardSnapshot snap)
+    {
+        try
+        {
+            var plotM = System.Text.RegularExpressions.Regex.Match(text, @"plot\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var wardM = System.Text.RegularExpressions.Regex.Match(text, @"(\d+)\w*\s+ward", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (plotM.Success && int.TryParse(plotM.Groups[1].Value, out var plot) && plot is > 0 and < 256)
+                snap.Plot = (byte)plot;
+            if (wardM.Success && int.TryParse(wardM.Groups[1].Value, out var ward) && ward is > 0 and < 256)
+                snap.Ward = (byte)ward;
+
+            // District is the trailing comma-separated segment.
+            var parts = text.Split(',');
+            if (parts.Length >= 3)
+            {
+                var d = parts[^1].Trim().TrimEnd('.');
+                var id = DistrictNameToTerritoryId(d);
+                if (id != 0) snap.TerritoryTypeId = id;
+            }
+        }
+        catch { /* ignore */ }
     }
 
     // Pull the first run of digits (allowing thousands separators) from a string.
@@ -199,6 +222,24 @@ public static unsafe class PlacardReader
         ("Shirogane", 641),
         ("Empyreum", 979),
     };
+
+    // Map a district name (as it appears in chat / on the placard, e.g. "Shirogane"
+    // or "The Lavender Beds") to its TerritoryType id. Tolerant of a missing/extra
+    // leading "The" and case. Returns 0 if unrecognised.
+    public static ushort DistrictNameToTerritoryId(string district)
+    {
+        if (string.IsNullOrWhiteSpace(district)) return 0;
+        var norm = district.Trim().TrimStart();
+        foreach (var (name, id) in Districts)
+        {
+            if (name.Equals(norm, StringComparison.OrdinalIgnoreCase)) return id;
+            // Compare with leading "The " stripped from both sides.
+            var a = name.StartsWith("The ", StringComparison.OrdinalIgnoreCase) ? name[4..] : name;
+            var b = norm.StartsWith("The ", StringComparison.OrdinalIgnoreCase) ? norm[4..] : norm;
+            if (a.Equals(b, StringComparison.OrdinalIgnoreCase)) return id;
+        }
+        return 0;
+    }
 
     // Region resolution copied from FC Tracker's proven World -> DC -> Region path.
     public static string ResolveRegionCode(IDataManager data, string worldName)

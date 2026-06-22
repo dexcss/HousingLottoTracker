@@ -55,7 +55,6 @@ public class BidRecord
 
     // --- Lottery state (captured from the placard) ---
     public LottoPhase Phase = LottoPhase.Unknown;
-    public int EntrantCount = -1;                    // -1 = unknown; entrants at last read
 
     // Your personal ticket number. The game shows this transiently at bid time and
     // does NOT persist it, so it's auto-grabbed when visible and otherwise editable.

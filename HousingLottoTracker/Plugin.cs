@@ -23,6 +23,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IGameGui GameGui { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
+    [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string CommandName = "/hlt";
@@ -73,10 +74,14 @@ public sealed class Plugin : IDalamudPlugin
 
         // Win auto-detect: the results placard congratulates you via a SelectYesno.
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesno);
+
+        // Primary capture: the chat confirmation emitted when you submit a bid.
+        ChatGui.ChatMessage += OnChatMessage;
     }
 
     public void Dispose()
     {
+        ChatGui.ChatMessage -= OnChatMessage;
         AddonLifecycle.UnregisterListener(OnSelectYesno);
         Framework.Update -= OnUpdate;
         ClientState.Login -= OnLogin;
@@ -228,6 +233,49 @@ public sealed class Plugin : IDalamudPlugin
 
         if (rec != null)
             PersistBid(rec);
+    }
+
+    // Primary capture path: parse the lottery entry confirmation from chat.
+    private void OnChatMessage(
+        Dalamud.Game.Text.XivChatType type,
+        int timestamp,
+        ref Dalamud.Game.Text.SeStringHandling.SeString sender,
+        ref Dalamud.Game.Text.SeStringHandling.SeString message,
+        ref bool isHandled)
+    {
+        try
+        {
+            var text = message.TextValue;
+            if (string.IsNullOrEmpty(text) || !text.Contains("lottery", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var parsed = ChatLotteryParser.Parse(text);
+            if (!parsed.IsEntry || parsed.Plot <= 0 || parsed.Ward <= 0)
+                return;
+
+            var contentId = PlayerState.ContentId;
+            if (contentId == 0) return;
+
+            var local = ObjectTable.LocalPlayer;
+            var name = local?.Name.TextValue ?? string.Empty;
+            var world = local?.HomeWorld.Value.Name.ExtractText() ?? string.Empty;
+            var region = PlacardReader.ResolveRegionCode(DataManager, world);
+
+            // Resolve district name -> territory id; fall back to the current zone.
+            var territoryId = PlacardReader.DistrictNameToTerritoryId(parsed.District);
+            if (territoryId == 0) territoryId = (ushort)ClientState.TerritoryType;
+
+            var rec = BidStore.CaptureFromChat(
+                Config.Bids, parsed, territoryId, contentId, name, world, region,
+                AccountKey, isFreeCompany: false);
+
+            PersistBid(rec);
+            Log.Info($"Housing Lotto Tracker: recorded bid {rec.LocationText} #{rec.EntryNumber} for {rec.CharacterDisplay}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "chat capture failed");
+        }
     }
 
     // Win auto-detect via the results placard's confirmation prompt. We flip the
