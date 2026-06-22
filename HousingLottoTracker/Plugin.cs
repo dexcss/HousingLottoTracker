@@ -236,18 +236,12 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     // Primary capture path: parse the lottery entry confirmation from chat.
-    // API15's ChatMessage uses OnHandleableChatMessageDelegate with Lumina
-    // ReadOnlySeString params.
-    private void OnChatMessage(
-        Dalamud.Game.Text.XivChatType type,
-        int timestamp,
-        ref Lumina.Text.ReadOnly.ReadOnlySeString sender,
-        ref Lumina.Text.ReadOnly.ReadOnlySeString message,
-        ref bool isHandled)
+    // API15's ChatMessage uses OnHandleableChatMessageDelegate(IHandleableChatMessage).
+    private void OnChatMessage(Dalamud.Game.Chat.IHandleableChatMessage chat)
     {
         try
         {
-            var text = message.ExtractText();
+            var text = chat.Message.TextValue;
             if (string.IsNullOrEmpty(text) || !text.Contains("lottery", StringComparison.OrdinalIgnoreCase))
                 return;
 
