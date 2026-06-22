@@ -220,7 +220,7 @@ public sealed class Plugin : IDalamudPlugin
         var world = local.HomeWorld.Value.Name.ExtractText();
         var region = PlacardReader.ResolveRegionCode(DataManager, world);
 
-        var snap = PlacardReader.Read(GameGui, DataManager, ClientState.TerritoryType);
+        var snap = PlacardReader.Read(GameGui, DataManager, (ushort)ClientState.TerritoryType);
         if (!snap.Valid) return;
 
         var rec = BidStore.CaptureFromPlacard(
