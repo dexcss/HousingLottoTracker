@@ -1,3 +1,9 @@
+## Installing (custom repo)
+
+1. In game: `/xlsettings` -> Experimental -> Custom Plugin Repositories.
+2. Add: `https://raw.githubusercontent.com/dexcss/DalamudPlugins/main/repo.json`
+3. Save, then find "Housing Lotto Tracker" in the plugin installer.
+
 # Housing Lotto Tracker
 
 A Dalamud plugin (API15) that passively tracks your FFXIV housing lottery bids across all your characters.
