@@ -4,7 +4,7 @@
   "Punchline": "Track your housing lottery bids: plot, world, entry number, results date, win/loss.",
   "Description": "Passively records your housing lottery bids, per character.\n\nTwo ways a bid is recorded:\n- Automatically when you place it: the in-game entry confirmation is read at bid time (character, world, district, ward, plot, size, your lottery number, and exact results date).\n- For bids placed before installing: open Duty > Timers > Estate > Housing Lottery Status to record the entry, then open that plot's placard to fill in the precise results date. (Opening a placard alone never creates a row, so browsing for-sale plots won't clutter the list.)\n\nYou can also add a bid fully by hand with the Add bid button.\n\n- One row per bid: character (with world), region, district, ward, plot, plot size, FC-vs-personal, entry date, results date with live countdown, and outcome (Pending / Won / Lost). Optional named Account column for multi-account play.\n- Win detection: when a results placard congratulates you, the bid is flipped to Won automatically.\n- Sortable table with click-to-expand details, per-column visibility toggles and reordering, editable notes, and optional shared storage across all clients.\n\nOpen with /hlt (alias /lotto).",
   "InternalName": "HousingLottoTracker",
-  "AssemblyVersion": "1.0.2.2",
+  "AssemblyVersion": "1.0.2.3",
   "RepoUrl": "https://github.com/dexcss/HousingLottoTracker",
   "ApplicableVersion": "any",
   "DalamudApiLevel": 15,

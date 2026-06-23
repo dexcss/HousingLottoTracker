@@ -80,7 +80,11 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = snap.TerritoryTypeId;
-        rec.District = Game.PlacardReader.CanonicalDistrict(snap.District);
+        var placardDistrict = Game.PlacardReader.CanonicalDistrict(snap.District);
+        if (string.IsNullOrEmpty(placardDistrict) || placardDistrict.StartsWith("District ") || placardDistrict.StartsWith("Territory "))
+            placardDistrict = Game.PlacardReader.DistrictDisplayName(snap.TerritoryTypeId);
+        if (!string.IsNullOrEmpty(placardDistrict) && !placardDistrict.StartsWith("District "))
+            rec.District = placardDistrict;
         rec.Ward = snap.Ward;
         rec.Plot = snap.Plot;
         if (snap.Size != LottoPlotSize.Unknown) rec.Size = snap.Size;
@@ -179,7 +183,12 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = territoryTypeId;
-        rec.District = string.IsNullOrEmpty(p.District) ? rec.District : Game.PlacardReader.CanonicalDistrict(p.District);
+        if (!string.IsNullOrEmpty(p.District))
+        {
+            var cd = Game.PlacardReader.CanonicalDistrict(p.District);
+            if (string.IsNullOrEmpty(cd)) cd = Game.PlacardReader.DistrictDisplayName(territoryTypeId);
+            if (!string.IsNullOrEmpty(cd) && !cd.StartsWith("District ")) rec.District = cd;
+        }
         rec.Ward = (byte)p.Ward;
         rec.Plot = (byte)p.Plot;
         rec.IsFreeCompany = isFreeCompany;
@@ -248,7 +257,12 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = territoryTypeId;
-        if (!string.IsNullOrEmpty(s.District)) rec.District = Game.PlacardReader.CanonicalDistrict(s.District);
+        if (!string.IsNullOrEmpty(s.District))
+        {
+            var cd = Game.PlacardReader.CanonicalDistrict(s.District);
+            if (string.IsNullOrEmpty(cd)) cd = Game.PlacardReader.DistrictDisplayName(territoryTypeId);
+            if (!string.IsNullOrEmpty(cd) && !cd.StartsWith("District ")) rec.District = cd;
+        }
         rec.Ward = (byte)s.Ward;
         rec.Plot = (byte)s.Plot;
         rec.IsFreeCompany = s.IsFreeCompany;   // the panel tells us this directly
@@ -326,7 +340,12 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = info.TerritoryTypeId;
-        if (!string.IsNullOrEmpty(district)) rec.District = Game.PlacardReader.CanonicalDistrict(district);
+        if (!string.IsNullOrEmpty(district))
+        {
+            var cd = Game.PlacardReader.CanonicalDistrict(district);
+            if (string.IsNullOrEmpty(cd)) cd = Game.PlacardReader.DistrictDisplayName(info.TerritoryTypeId);
+            if (!string.IsNullOrEmpty(cd) && !cd.StartsWith("District ")) rec.District = cd;
+        }
         rec.Ward = ward;
         rec.Plot = plot;
         rec.IsFreeCompany = info.IsFreeCompany;           // definitive from the game
@@ -363,6 +382,14 @@ public static class BidStore
         return changed;
     }
 
+    // For manual entry: keep the canonical name if recognised, else the raw input
+    // (the manual form uses a dropdown, so the input is already a valid district).
+    private static string NormalizeManualDistrict(string district)
+    {
+        var cd = Game.PlacardReader.CanonicalDistrict(district);
+        return string.IsNullOrEmpty(cd) ? (district ?? string.Empty).Trim() : cd;
+    }
+
     // Build a bid from user-entered fields (backfilling a bid placed before the
     // plugin was installed, or one on a plot you can't currently visit). Timing is
     // derived from the supplied entry date via the global cycle clock. Returns the
@@ -392,7 +419,7 @@ public static class BidStore
             Region = region,
             AccountKey = accountKey,
             TerritoryTypeId = territoryTypeId,
-            District = Game.PlacardReader.CanonicalDistrict(district),
+            District = NormalizeManualDistrict(district),
             Ward = ward,
             Plot = plot,
             Size = size,

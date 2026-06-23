@@ -217,7 +217,10 @@ public static unsafe class PlacardReader
             snap.Valid = true;
     }
 
-    // Parse the placard address line "Plot 38, 30th Ward, Shirogane".
+    // Parse the placard address line, e.g. "Plot 38, 30th Ward, Shirogane" or an
+    // apartment variant like "...Kobai Goten, Shirogane". The district is whichever
+    // of the five canonical names appears anywhere in the text — never the building
+    // or subdivision name.
     private static void ParseAddress(string text, PlacardSnapshot snap)
     {
         try
@@ -229,13 +232,19 @@ public static unsafe class PlacardReader
             if (wardM.Success && int.TryParse(wardM.Groups[1].Value, out var ward) && ward is > 0 and < 256)
                 snap.Ward = (byte)ward;
 
-            // District is the trailing comma-separated segment.
-            var parts = text.Split(',');
-            if (parts.Length >= 3)
+            // Look for a canonical district name anywhere in the address text.
+            var lower = text.ToLowerInvariant();
+            ushort id = 0;
+            if (lower.Contains("mist")) id = 339;
+            else if (lower.Contains("lavender")) id = 340;
+            else if (lower.Contains("goblet")) id = 341;
+            else if (lower.Contains("shirogane")) id = 641;
+            else if (lower.Contains("empyreum")) id = 979;
+
+            if (id != 0)
             {
-                var d = parts[^1].Trim().TrimEnd('.');
-                var id = DistrictNameToTerritoryId(d);
-                if (id != 0) snap.TerritoryTypeId = id;
+                snap.TerritoryTypeId = id;
+                snap.District = DistrictDisplayName(id);
             }
         }
         catch { /* ignore */ }
@@ -348,7 +357,7 @@ public static unsafe class PlacardReader
         if (lower.Contains("goblet")) return "The Goblet";
         if (lower.Contains("shirogane")) return "Shirogane";
         if (lower.Contains("empyreum")) return "Empyreum";
-        return district.Trim();
+        return string.Empty;   // not a recognised district (e.g. an apartment building name)
     }
 
     // Display name for a district id (canonical), independent of the sheet.
