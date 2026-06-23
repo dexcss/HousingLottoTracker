@@ -80,7 +80,7 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = snap.TerritoryTypeId;
-        rec.District = snap.District;
+        rec.District = Game.PlacardReader.CanonicalDistrict(snap.District);
         rec.Ward = snap.Ward;
         rec.Plot = snap.Plot;
         if (snap.Size != LottoPlotSize.Unknown) rec.Size = snap.Size;
@@ -179,7 +179,7 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = territoryTypeId;
-        rec.District = string.IsNullOrEmpty(p.District) ? rec.District : p.District;
+        rec.District = string.IsNullOrEmpty(p.District) ? rec.District : Game.PlacardReader.CanonicalDistrict(p.District);
         rec.Ward = (byte)p.Ward;
         rec.Plot = (byte)p.Plot;
         rec.IsFreeCompany = isFreeCompany;
@@ -248,7 +248,7 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = territoryTypeId;
-        if (!string.IsNullOrEmpty(s.District)) rec.District = s.District;
+        if (!string.IsNullOrEmpty(s.District)) rec.District = Game.PlacardReader.CanonicalDistrict(s.District);
         rec.Ward = (byte)s.Ward;
         rec.Plot = (byte)s.Plot;
         rec.IsFreeCompany = s.IsFreeCompany;   // the panel tells us this directly
@@ -326,7 +326,7 @@ public static class BidStore
         rec.Region = region;
         rec.AccountKey = accountKey;
         rec.TerritoryTypeId = info.TerritoryTypeId;
-        if (!string.IsNullOrEmpty(district)) rec.District = district;
+        if (!string.IsNullOrEmpty(district)) rec.District = Game.PlacardReader.CanonicalDistrict(district);
         rec.Ward = ward;
         rec.Plot = plot;
         rec.IsFreeCompany = info.IsFreeCompany;           // definitive from the game
@@ -392,7 +392,7 @@ public static class BidStore
             Region = region,
             AccountKey = accountKey,
             TerritoryTypeId = territoryTypeId,
-            District = district,
+            District = Game.PlacardReader.CanonicalDistrict(district),
             Ward = ward,
             Plot = plot,
             Size = size,

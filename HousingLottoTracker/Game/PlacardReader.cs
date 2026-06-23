@@ -260,6 +260,14 @@ public static unsafe class PlacardReader
     public static string ResolveDistrict(IDataManager data, ushort territoryTypeId)
     {
         if (territoryTypeId == 0) return string.Empty;
+
+        // Prefer the canonical district name keyed by territory id, so we always show
+        // "Shirogane" / "Mist" / etc. rather than a subdivision or ward-area name the
+        // PlaceName sheet might resolve to.
+        foreach (var (name, id) in Districts)
+            if (id == territoryTypeId) return name;
+
+        // Fallback to the sheet for any unexpected territory id.
         try
         {
             var tt = data.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>().GetRowOrDefault(territoryTypeId);
@@ -325,6 +333,22 @@ public static unsafe class PlacardReader
         ("Shirogane", 641),
         ("Empyreum", 979),
     };
+
+    // Normalise any district string (which may be a subdivision/ward-area name, or
+    // contain extra words) to one of the five canonical district names. Returns the
+    // input unchanged if it matches none.
+    public static string CanonicalDistrict(string district)
+    {
+        if (string.IsNullOrWhiteSpace(district)) return district ?? string.Empty;
+        var lower = district.ToLowerInvariant();
+
+        if (lower.Contains("mist")) return "Mist";
+        if (lower.Contains("lavender")) return "The Lavender Beds";
+        if (lower.Contains("goblet")) return "The Goblet";
+        if (lower.Contains("shirogane")) return "Shirogane";
+        if (lower.Contains("empyreum")) return "Empyreum";
+        return district.Trim();
+    }
 
     // Map a district name (as it appears in chat / on the placard, e.g. "Shirogane"
     // or "The Lavender Beds") to its TerritoryType id. Tolerant of a missing/extra
