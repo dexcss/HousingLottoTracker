@@ -145,7 +145,8 @@ public static class BidStore
         string worldName,
         string region,
         string accountKey,
-        bool isFreeCompany)
+        bool isFreeCompany,
+        LottoPlotSize size)
     {
         var now = DateTime.UtcNow;
 
@@ -183,6 +184,7 @@ public static class BidStore
         rec.Plot = (byte)p.Plot;
         rec.IsFreeCompany = isFreeCompany;
         rec.Phase = LottoPhase.Entry;
+        if (size != LottoPlotSize.Unknown) rec.Size = size;
 
         if (p.LotteryNumber >= 0) rec.EntryNumber = p.LotteryNumber;
 

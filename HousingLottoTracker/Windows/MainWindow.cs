@@ -45,17 +45,18 @@ public class MainWindow : Window
     private string mAddResult = "";
 
     // ---- Sorting ----
-    private enum SortCol { Character, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome }
+    private enum SortCol { Character, Account, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome }
     private SortCol sort = SortCol.EntryDate;
     private bool sortAsc = false; // newest first by default
 
     // Column identity, mirroring the config toggles.
-    private enum Col { Character, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome, Notes }
+    private enum Col { Character, Account, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome, Notes }
 
     private List<Col> EnabledColumns(Configuration c)
     {
         var list = new List<Col>();
         if (c.ColCharacter) list.Add(Col.Character);
+        if (c.ShowAccountColumn) list.Add(Col.Account);
         if (c.ColRegion) list.Add(Col.Region);
         if (c.ColDistrict) list.Add(Col.District);
         if (c.ColWardPlot) list.Add(Col.WardPlot);
@@ -88,6 +89,7 @@ public class MainWindow : Window
     private static string HeaderFor(Col c) => c switch
     {
         Col.Character => "Character",
+        Col.Account => "Account",
         Col.Region => "Region",
         Col.District => "District",
         Col.WardPlot => "Ward/Plot",
@@ -106,6 +108,7 @@ public class MainWindow : Window
     private static SortCol? SortForCol(Col c) => c switch
     {
         Col.Character => SortCol.Character,
+        Col.Account => SortCol.Account,
         Col.Region => SortCol.Region,
         Col.District => SortCol.District,
         Col.WardPlot => SortCol.WardPlot,
@@ -301,6 +304,7 @@ public class MainWindow : Window
         Comparison<BidRecord> cmp = sort switch
         {
             SortCol.Character => (a, b) => string.Compare(a.CharacterDisplay, b.CharacterDisplay, StringComparison.OrdinalIgnoreCase),
+            SortCol.Account => (a, b) => string.Compare(AccountName(a), AccountName(b), StringComparison.OrdinalIgnoreCase),
             SortCol.Region => (a, b) => string.Compare(a.Region, b.Region, StringComparison.OrdinalIgnoreCase),
             SortCol.District => (a, b) => string.Compare(a.District, b.District, StringComparison.OrdinalIgnoreCase),
             SortCol.WardPlot => (a, b) => a.Ward != b.Ward ? a.Ward.CompareTo(b.Ward) : a.Plot.CompareTo(b.Plot),
@@ -389,6 +393,7 @@ public class MainWindow : Window
     private static float WidthWeight(Col c) => c switch
     {
         Col.Character => 1.8f,
+        Col.Account => 1.0f,
         Col.Region => 0.6f,
         Col.District => 1.3f,
         Col.WardPlot => 0.8f,
@@ -435,6 +440,7 @@ public class MainWindow : Window
     private static string CellText(BidRecord b, Col c) => c switch
     {
         Col.Character => b.CharacterDisplay,
+        Col.Account => AccountName(b),
         Col.Region => b.Region,
         Col.District => string.IsNullOrEmpty(b.District) ? "?" : b.District,
         Col.WardPlot => $"W{b.Ward} P{b.Plot}",
@@ -450,6 +456,18 @@ public class MainWindow : Window
         _ => "",
     };
 
+    // Friendly account name from the alias map, or a short tail of the roaming path.
+    private string AccountName(BidRecord b)
+    {
+        var key = b.AccountKey ?? string.Empty;
+        if (plugin.Config.AccountAliases.TryGetValue(key, out var alias) && !string.IsNullOrWhiteSpace(alias))
+            return alias;
+        if (string.IsNullOrEmpty(key)) return "—";
+        // Default: last path segment (often the XIVLauncher account folder name).
+        var idx = key.LastIndexOfAny(new[] { '/', '\\' });
+        return idx >= 0 && idx < key.Length - 1 ? key[(idx + 1)..] : key;
+    }
+
     private static string CountdownText(BidRecord b)
     {
         if (b.Outcome is LottoOutcome.Lost or LottoOutcome.Claimed or LottoOutcome.Expired) return "—";
@@ -464,6 +482,7 @@ public class MainWindow : Window
         switch (c)
         {
             case Col.Character: ImGui.TextUnformatted(b.CharacterDisplay); break;
+            case Col.Account: ImGui.TextUnformatted(AccountName(b)); break;
             case Col.Region: ImGui.TextUnformatted(b.Region); break;
             case Col.District: ImGui.TextUnformatted(string.IsNullOrEmpty(b.District) ? "?" : b.District); break;
             case Col.WardPlot: ImGui.TextUnformatted($"W{b.Ward} P{b.Plot}"); break;

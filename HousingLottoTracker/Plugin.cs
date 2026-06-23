@@ -268,7 +268,11 @@ public sealed class Plugin : IDalamudPlugin
             Config.Bids, parsed, territoryId, contentId, name, world, region, AccountKey);
 
         if (rec != null)
+        {
+            if (rec.Size == LottoPlotSize.Unknown)
+                rec.Size = PlacardReader.ResolvePlotSize(DataManager, rec.TerritoryTypeId, rec.Plot);
             PersistBid(rec);
+        }
     }
 
     // Reliable primary capture from the placard sale-info hook. Updates an existing
@@ -293,6 +297,8 @@ public sealed class Plugin : IDalamudPlugin
 
             if (rec != null)
             {
+                if (rec.Size == LottoPlotSize.Unknown)
+                    rec.Size = PlacardReader.ResolvePlotSize(DataManager, rec.TerritoryTypeId, rec.Plot);
                 PersistBid(rec);
                 Log.Info($"Housing Lotto Tracker: hook updated {rec.LocationText} ({rec.TypeText}) results {rec.ResultsAvailableUtc:yyyy-MM-dd HH:mm}");
             }
@@ -329,9 +335,13 @@ public sealed class Plugin : IDalamudPlugin
             var territoryId = PlacardReader.DistrictNameToTerritoryId(parsed.District);
             if (territoryId == 0) territoryId = (ushort)ClientState.TerritoryType;
 
+            // Size isn't in the chat line, but it's derivable from the sheet by
+            // territory + plot number, so it fills in immediately at bid time.
+            var size = PlacardReader.ResolvePlotSize(DataManager, territoryId, parsed.Plot);
+
             var rec = BidStore.CaptureFromChat(
                 Config.Bids, parsed, territoryId, contentId, name, world, region,
-                AccountKey, isFreeCompany: false);
+                AccountKey, isFreeCompany: false, size);
 
             PersistBid(rec);
             Log.Info($"Housing Lotto Tracker: recorded bid {rec.LocationText} #{rec.EntryNumber} for {rec.CharacterDisplay}");

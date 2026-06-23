@@ -273,6 +273,46 @@ public static unsafe class PlacardReader
         return $"Territory {territoryTypeId}";
     }
 
+    // Map a residential TerritoryType id to its HousingLandSet sheet row.
+    private static uint TerritoryToLandSetId(ushort territoryTypeId) => territoryTypeId switch
+    {
+        641 => 3,   // Shirogane
+        979 => 4,   // Empyreum
+        _ => (uint)(territoryTypeId - 339),  // Mist 339, Lavender Beds 340, Goblet 341
+    };
+
+    // Derive a plot's size from the HousingLandSet sheet using its territory and
+    // 1-based plot number — so size is known without reading the placard. The sheet's
+    // PlotSize is 0 = Small, 1 = Medium, 2 = Large.
+    public static LottoPlotSize ResolvePlotSize(IDataManager data, ushort territoryTypeId, int plot1Based)
+    {
+        if (territoryTypeId == 0 || plot1Based <= 0) return LottoPlotSize.Unknown;
+        try
+        {
+            var landSetId = TerritoryToLandSetId(territoryTypeId);
+            var sheet = data.GetExcelSheet<Lumina.Excel.Sheets.HousingLandSet>();
+            var row = sheet?.GetRowOrDefault(landSetId);
+            if (row.HasValue)
+            {
+                var idx = plot1Based - 1;   // sheet is 0-based per plot
+                var sub = row.Value.LandSet;
+                if (idx >= 0 && idx < sub.Count)
+                {
+                    var sizeByte = sub[idx].PlotSize;
+                    return sizeByte switch
+                    {
+                        0 => LottoPlotSize.Small,
+                        1 => LottoPlotSize.Medium,
+                        2 => LottoPlotSize.Large,
+                        _ => LottoPlotSize.Unknown,
+                    };
+                }
+            }
+        }
+        catch { /* ignore */ }
+        return LottoPlotSize.Unknown;
+    }
+
     // The five residential districts and their well-known TerritoryType ids. Used by
     // the manual-add form so a backfilled bid lands on the same key a live capture
     // would produce. Display names are resolved from the sheet at runtime where

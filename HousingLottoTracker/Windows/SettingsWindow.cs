@@ -156,6 +156,55 @@ public class SettingsWindow : Window
             }
         }
 
+        if (ImGui.CollapsingHeader("Accounts"))
+        {
+            var showAcc = cfg.ShowAccountColumn;
+            if (ImGui.Checkbox("Show Account column", ref showAcc))
+            {
+                cfg.ShowAccountColumn = showAcc;
+                cfg.Save();
+            }
+            ImGui.TextDisabled("Name each account below. Accounts are identified automatically as you record bids on different installs.");
+
+            // Gather the distinct account keys seen across recorded bids.
+            var keys = new List<string>();
+            foreach (var b in plugin.Config.Bids)
+            {
+                var k = b.AccountKey ?? string.Empty;
+                if (!string.IsNullOrEmpty(k) && !keys.Contains(k)) keys.Add(k);
+            }
+            // Include any keys that already have aliases but no current bids.
+            foreach (var k in cfg.AccountAliases.Keys)
+                if (!keys.Contains(k)) keys.Add(k);
+
+            if (keys.Count == 0)
+            {
+                ImGui.TextDisabled("No accounts seen yet.");
+            }
+            else
+            {
+                foreach (var key in keys)
+                {
+                    cfg.AccountAliases.TryGetValue(key, out var alias);
+                    alias ??= string.Empty;
+                    var tail = key.LastIndexOfAny(new[] { '/', '\\' }) is var idx && idx >= 0 && idx < key.Length - 1
+                        ? key[(idx + 1)..] : key;
+
+                    ImGui.PushID($"acct{key}");
+                    ImGui.SetNextItemWidth(220f * ImGuiHelpers.GlobalScale);
+                    if (ImGui.InputTextWithHint("##alias", tail, ref alias, 64))
+                    {
+                        if (string.IsNullOrWhiteSpace(alias)) cfg.AccountAliases.Remove(key);
+                        else cfg.AccountAliases[key] = alias;
+                        cfg.Save();
+                    }
+                    ImGui.SameLine();
+                    ImGui.TextDisabled(tail);
+                    ImGui.PopID();
+                }
+            }
+        }
+
         if (ImGui.CollapsingHeader("Storage"))
         {
             var shared = cfg.UseSharedStorage;

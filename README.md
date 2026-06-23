@@ -16,17 +16,14 @@ Open with `/hlt` (alias `/lotto`).
 
 ## How capture works
 
-Capture is **passive**. When you open a housing placard (the `HousingSignBoard`
-addon) during an entry or results period, the plugin reads the plot location from
-`HousingManager` and scrapes the placard's text for the entrant count, your entry
-number (when shown), the winning number (during results), and phase. A bid is only
-*created* when you're looking at a placard during the entry period, or when the
-placard explicitly shows your entry number — so browsing other plots won't create
-phantom rows.
+Capture is **passive**. There are two ways a bid gets recorded:
 
-Wins are auto-detected the same way FC Tracker detects house wins: the results
-placard's confirmation dialog (`SelectYesno`) is checked for congratulatory
-wording, and the matching bid is flipped to **Won**.
+1. **Automatically when you place a bid.** The in-game confirmation ("You have submitted a lottery entry for…") is read the moment you enter, recording the character, world, district, ward, plot, your lottery number, plot size, and the exact results date.
+2. **By checking the game's own records** (for bids placed before installing the plugin). Open **Duty → Timers → Estate → Housing Lottery Status** to record the entry, then walk up to that plot and open its placard to fill in the precise results date. Opening the placard alone never creates a row — it only enriches a bid the plugin already knows about, so browsing other for-sale plots won't clutter the list.
+
+You can also enter a bid **fully by hand** with the **Add bid** button, for plots you can't currently visit or anything you'd rather type in yourself.
+
+Wins are auto-detected when the results placard's confirmation dialog congratulates you.
 
 ## Honest limitations
 
