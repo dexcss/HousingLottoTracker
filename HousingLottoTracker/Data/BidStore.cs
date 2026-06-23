@@ -55,15 +55,14 @@ public static class BidStore
         var isNew = false;
         if (rec == null)
         {
-            // Only create a NEW bid during the entry phase — seeing a placard during
-            // results for a plot you never bid on shouldn't fabricate a row.
-            if (snap.Phase != LottoPhase.Entry)
-            {
-                // Exception: the placard explicitly shows your entry number → you did
-                // bid; record it even in results.
-                if (snap.EntryNumber < 0 && !snap.WonHint)
-                    return null;
-            }
+            // The "For Sale" placard does NOT reveal whether *you* bid on it — it
+            // looks identical whether you've entered or are just browsing. So the
+            // scrape/hook path must NOT create rows from a placard view; doing so
+            // adds every for-sale plot you open. A row is only created when we have
+            // positive proof of your entry: a captured entry number, or a win hint.
+            // Creation otherwise comes from the chat confirmation or Timers panel.
+            if (snap.EntryNumber < 0 && !snap.WonHint)
+                return null;
 
             rec = new BidRecord
             {
