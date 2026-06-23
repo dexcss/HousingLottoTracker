@@ -3,7 +3,7 @@
     <PropertyGroup>
         <Authors>Akari</Authors>
         <AssemblyName>HousingLottoTracker</AssemblyName>
-        <Version>1.0.2.0</Version>
+        <Version>1.0.2.1</Version>
         <Description>Tracks housing lottery bids across your characters: plot location, world, region, entry number, results date, and win/loss outcome.</Description>
     </PropertyGroup>
 
