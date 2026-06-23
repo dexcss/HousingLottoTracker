@@ -43,6 +43,8 @@ public class MainWindow : Window
     private string mWorldName = "";
     private string mNotes = "";
     private string mAddResult = "";
+    private string actionResult = "";
+    private DateTime actionResultUntil = DateTime.MinValue;
 
     // ---- Sorting ----
     private enum SortCol { Character, Account, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome }
@@ -50,11 +52,13 @@ public class MainWindow : Window
     private bool sortAsc = false; // newest first by default
 
     // Column identity, mirroring the config toggles.
-    private enum Col { Character, Account, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome, Notes }
+    private enum Col { Login, Tp, Character, Account, Region, District, WardPlot, Size, Type, EntryNumber, EntryDate, ResultsDate, Countdown, Phase, Outcome, Notes }
 
     private List<Col> EnabledColumns(Configuration c)
     {
         var list = new List<Col>();
+        if (c.ColLogin) list.Add(Col.Login);
+        if (c.ColTp) list.Add(Col.Tp);
         if (c.ColCharacter) list.Add(Col.Character);
         if (c.ShowAccountColumn) list.Add(Col.Account);
         if (c.ColRegion) list.Add(Col.Region);
@@ -88,6 +92,8 @@ public class MainWindow : Window
 
     private static string HeaderFor(Col c) => c switch
     {
+        Col.Login => "LOG",
+        Col.Tp => "TP",
         Col.Character => "Character",
         Col.Account => "Account",
         Col.Region => "Region",
@@ -95,7 +101,7 @@ public class MainWindow : Window
         Col.WardPlot => "Ward/Plot",
         Col.Size => "Size",
         Col.Type => "Type",
-        Col.EntryNumber => "Your #",
+        Col.EntryNumber => "Bid",
         Col.EntryDate => "Entered",
         Col.ResultsDate => "Results",
         Col.Countdown => "Countdown",
@@ -146,6 +152,11 @@ public class MainWindow : Window
         {
             ImGui.Separator();
             DrawAddForm();
+        }
+
+        if (!string.IsNullOrEmpty(actionResult) && DateTime.UtcNow < actionResultUntil)
+        {
+            ImGui.TextColored(new Vector4(0.7f, 0.85f, 1f, 1f), actionResult);
         }
 
         ImGui.Separator();
@@ -392,6 +403,8 @@ public class MainWindow : Window
 
     private static float WidthWeight(Col c) => c switch
     {
+        Col.Login => 0.35f,
+        Col.Tp => 0.35f,
         Col.Character => 1.8f,
         Col.Account => 1.0f,
         Col.Region => 0.6f,
@@ -417,23 +430,75 @@ public class MainWindow : Window
         var isOpen = expandedKey == b.Key;
         var tri = isOpen ? "\u25BC " : "\u25B6 ";
 
+        // The expand toggle lives on the first non-button column so button clicks
+        // (Login / TP) aren't swallowed by the row-wide selectable.
+        var anchorIdx = columns.FindIndex(c => !IsButtonCol(c));
+        if (anchorIdx < 0) anchorIdx = 0;
+
         for (var ci = 0; ci < columns.Count; ci++)
         {
             ImGui.TableNextColumn();
-            if (ci == 0)
+            var c = columns[ci];
+
+            if (IsButtonCol(c))
             {
-                // First cell doubles as the row's expand toggle (spans all columns).
-                var label = CellText(b, columns[0]);
+                DrawButtonCell(b, c);
+            }
+            else if (ci == anchorIdx)
+            {
+                var label = CellText(b, c);
                 if (ImGui.Selectable($"{tri}{label}###row{b.Key}", isOpen, ImGuiSelectableFlags.SpanAllColumns))
                     expandedKey = isOpen ? "" : b.Key;
             }
             else
             {
-                DrawCell(b, columns[ci]);
+                DrawCell(b, c);
             }
         }
 
         ImGui.PopID();
+    }
+
+    private static bool IsButtonCol(Col c) => c is Col.Login or Col.Tp;
+
+    private void DrawButtonCell(BidRecord b, Col c)
+    {
+        if (c == Col.Login)
+        {
+            if (string.IsNullOrEmpty(b.CharacterName) || string.IsNullOrEmpty(b.WorldName))
+            {
+                ImGui.TextDisabled("");
+                return;
+            }
+            if (ImGui.SmallButton($"\uE05D###login{b.Key}"))
+            {
+                var r = plugin.RelogTo(b.CharacterName, b.WorldName);
+                actionResult = string.IsNullOrEmpty(r)
+                    ? $"Logging into {b.CharacterName} @ {b.WorldName}..."
+                    : r;
+                actionResultUntil = DateTime.UtcNow.AddSeconds(8);
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Log into {b.CharacterName} @ {b.WorldName} (via AutoRetainer relog)");
+        }
+        else if (c == Col.Tp)
+        {
+            if (string.IsNullOrEmpty(b.WorldName) || string.IsNullOrEmpty(b.District) || b.Ward <= 0 || b.Plot <= 0)
+            {
+                ImGui.TextDisabled("");
+                return;
+            }
+            if (ImGui.SmallButton($"\u27A4###tp{b.Key}"))
+            {
+                var r = plugin.LifestreamTo(b);
+                actionResult = string.IsNullOrEmpty(r)
+                    ? $"Lifestream to {b.District} W{b.Ward} P{b.Plot} ({b.WorldName})..."
+                    : r;
+                actionResultUntil = DateTime.UtcNow.AddSeconds(8);
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Lifestream to {b.WorldName} {b.District} W{b.Ward} P{b.Plot}");
+        }
     }
 
     // Plain-text form of a cell (used for the first, click-to-expand column).

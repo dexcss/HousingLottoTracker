@@ -35,7 +35,13 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem = new("HousingLottoTracker");
     private readonly MainWindow mainWindow;
     private readonly SettingsWindow settingsWindow;
+    private readonly AlertWindow alertWindow;
     private PlacardSaleHook? saleHook;
+    private PaissaClient? paissa;
+    private AlertWatcher? alertWatcher;
+    public AlertWatcher? Alerts => alertWatcher;
+    private int lastAlertCount;
+    private bool loginPopupPending;
 
     public string AccountKey { get; }
 
@@ -56,8 +62,12 @@ public sealed class Plugin : IDalamudPlugin
 
         mainWindow = new MainWindow(this);
         settingsWindow = new SettingsWindow(this);
+        paissa = new PaissaClient();
+        alertWatcher = new AlertWatcher(Config, paissa, DataManager, Log, () => Config.Save());
+        alertWindow = new AlertWindow(this, alertWatcher);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(settingsWindow);
+        windowSystem.AddWindow(alertWindow);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -95,6 +105,10 @@ public sealed class Plugin : IDalamudPlugin
         PlacardReader.DebugLog = null;
         saleHook?.Dispose();
         saleHook = null;
+        alertWatcher?.Dispose();
+        alertWatcher = null;
+        paissa?.Dispose();
+        paissa = null;
         AddonLifecycle.UnregisterListener(OnSelectYesno);
         Framework.Update -= OnUpdate;
         ClientState.Login -= OnLogin;
@@ -160,6 +174,42 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
+    // Log into a character via AutoRetainer's relog command. Returns "" on success
+    // or a human-readable error to surface in the UI.
+    public string RelogTo(string characterName, string worldName)
+    {
+        if (string.IsNullOrEmpty(characterName) || string.IsNullOrEmpty(worldName))
+            return "Missing character or world name.";
+
+        if (!PluginIpc.IsAutoRetainerAvailable())
+            return "AutoRetainer isn't installed — the login button uses its relog.";
+
+        try
+        {
+            var cmd = $"/autoretainer relog {characterName}@{worldName}";
+            CommandManager.ProcessCommand(cmd);
+            Log.Info($"Housing Lotto Tracker: requested relog via AutoRetainer -> {characterName}@{worldName}");
+            return "";
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "relog command failed");
+            return $"Relog failed: {ex.Message}";
+        }
+    }
+
+    // Lifestream travel to the bid's plot. Returns "" on success or an error.
+    public string LifestreamTo(BidRecord b)
+    {
+        if (string.IsNullOrEmpty(b.WorldName) || string.IsNullOrEmpty(b.District) || b.Ward <= 0 || b.Plot <= 0)
+            return "Missing destination details.";
+        if (!PluginIpc.IsLifestreamAvailable())
+            return "Lifestream isn't installed.";
+        return PluginIpc.LifestreamGoToAddress(b.WorldName, b.District, b.Ward, b.Plot)
+            ? ""
+            : "Lifestream declined the request (busy or prerequisites not met).";
+    }
+
     public void ClearAll()
     {
         Config.Bids.Clear();
@@ -190,7 +240,11 @@ public sealed class Plugin : IDalamudPlugin
         return "";
     }
 
-    private void OnLogin() => lastPoll = DateTime.MinValue;
+    private void OnLogin()
+    {
+        lastPoll = DateTime.MinValue;
+        loginPopupPending = true;   // surface any matching alerts shortly after login
+    }
 
     private void OnUpdate(IFramework framework)
     {
@@ -215,6 +269,31 @@ public sealed class Plugin : IDalamudPlugin
             }
             catch (Exception ex) { Log.Error(ex, "outcome tick failed"); }
         }
+
+        // Alert polling + popup surfacing.
+        try
+        {
+            alertWatcher?.Tick();
+            var count = alertWatcher?.ActiveCount ?? 0;
+
+            if (Config.AlertOnLoginOnly)
+            {
+                // Only auto-open shortly after a login, once a poll has produced data.
+                if (loginPopupPending && count > 0)
+                {
+                    alertWindow.IsOpen = true;
+                    loginPopupPending = false;
+                }
+            }
+            else
+            {
+                // Auto-open whenever the set of active alerts grows.
+                if (count > lastAlertCount && count > 0)
+                    alertWindow.IsOpen = true;
+            }
+            lastAlertCount = count;
+        }
+        catch (Exception ex) { Log.Error(ex, "alert tick failed"); }
 
         if (DateTime.UtcNow - lastPoll < PollInterval) return;
         lastPoll = DateTime.UtcNow;

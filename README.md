@@ -25,6 +25,23 @@ You can also enter a bid **fully by hand** with the **Add bid** button, for plot
 
 Wins are auto-detected when the results placard's confirmation dialog congratulates you.
 
+## Travel & login buttons
+
+If you have **Lifestream** and/or **AutoRetainer** installed, each row shows two small buttons:
+
+- **LOG** — logs into that bid's character via AutoRetainer's relog.
+- **TP** — Lifestream-travels to that bid's plot.
+
+Both columns are on by default and can be toggled in Settings → Columns. They're hidden per-row when the relevant plugin isn't installed or the row lacks the needed info.
+
+## Open-plot alerts
+
+Set up watch rules (Settings → Alerts) to be notified when a matching plot becomes available, using crowd-sourced data from **PaissaDB** (zhu.codes) — the same source the PaissaHouse plugin uses.
+
+A rule can be as broad or specific as you like: *"any Shirogane Plot 60 on any server,"* or *"Shirogane Plot 60, Ward 26, on Ultros."* You can multi-select plots, wards, sizes, worlds, data centers, and regions; leaving a filter blank means "any."
+
+When a match appears, a popup lists it (with a Travel button if Lifestream is installed). Hitting **Seen** acknowledges that specific open plot — it won't alert again until that plot fills and a new one opens. You can have it pop up only at login, or whenever a new match appears. Coverage depends on other players reporting plots, exactly like PaissaHouse.
+
 ## Honest limitations
 
 - **The game does not persist your personal ticket number.** It's shown briefly at

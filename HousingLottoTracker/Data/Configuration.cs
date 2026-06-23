@@ -25,6 +25,8 @@ public class Configuration : IPluginConfiguration
     public bool ShowAccountColumn = false;
 
     // Per-column visibility. Defaults give a sensible at-a-glance layout.
+    public bool ColLogin = true;         // AutoRetainer relog button
+    public bool ColTp = true;            // Lifestream travel button
     public bool ColCharacter = true;
     public bool ColRegion = false;
     public bool ColDistrict = true;
@@ -47,6 +49,15 @@ public class Configuration : IPluginConfiguration
 
     // Account aliases: roaming path -> friendly name.
     public Dictionary<string, string> AccountAliases = new();
+
+    // ---- Alerts ----
+    public bool AlertsEnabled = true;
+    public List<AlertRule> AlertRules = new();
+    // Acknowledged alert keys (rule+plot instance). Cleared per-plot when that plot
+    // is no longer open, so it can re-alert when it becomes available again.
+    public List<string> AcknowledgedAlerts = new();
+    public int AlertPollSeconds = 120;       // how often to poll PaissaDB
+    public bool AlertOnLoginOnly = false;    // if true, only surface the popup at login
 
     [NonSerialized] private IDalamudPluginInterface? pluginInterface;
 

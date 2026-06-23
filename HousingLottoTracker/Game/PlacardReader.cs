@@ -350,6 +350,64 @@ public static unsafe class PlacardReader
         return district.Trim();
     }
 
+    // Display name for a district id (canonical), independent of the sheet.
+    public static string DistrictDisplayName(ushort districtId) => districtId switch
+    {
+        339 => "Mist",
+        340 => "The Lavender Beds",
+        341 => "The Goblet",
+        641 => "Shirogane",
+        979 => "Empyreum",
+        _ => $"District {districtId}",
+    };
+
+    // All residential districts as (name, id) for selection UIs.
+    public static readonly (string Name, ushort Id)[] AllDistricts =
+    {
+        ("Mist", 339),
+        ("The Lavender Beds", 340),
+        ("The Goblet", 341),
+        ("Shirogane", 641),
+        ("Empyreum", 979),
+    };
+
+    // Enumerate public worlds with their DC and region, for alert target selection.
+    // Filters out test/private DCs (those without a real region).
+    public static List<(string World, ushort WorldId, string DataCenter, string Region)> EnumerateWorlds(IDataManager data)
+    {
+        var result = new List<(string, ushort, string, string)>();
+        try
+        {
+            var worlds = data.GetExcelSheet<Lumina.Excel.Sheets.World>();
+            if (worlds == null) return result;
+            foreach (var w in worlds)
+            {
+                if (!w.IsPublic) continue;
+                var name = w.Name.ExtractText();
+                if (string.IsNullOrEmpty(name)) continue;
+
+                string dcName;
+                byte regionId;
+                try
+                {
+                    var dc = w.DataCenter.Value;
+                    dcName = dc.Name.ExtractText();
+                    regionId = (byte)dc.Region.RowId;
+                }
+                catch { continue; }
+
+                if (string.IsNullOrEmpty(dcName)) continue;
+
+                var region = RegionAlias(string.Empty, regionId);
+                if (string.IsNullOrEmpty(region) || region == "DEV") continue;
+
+                result.Add((name, (ushort)w.RowId, dcName, region));
+            }
+        }
+        catch { /* ignore */ }
+        return result;
+    }
+
     // Map a district name (as it appears in chat / on the placard, e.g. "Shirogane"
     // or "The Lavender Beds") to its TerritoryType id. Tolerant of a missing/extra
     // leading "The" and case. Returns 0 if unrecognised.

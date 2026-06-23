@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
@@ -27,6 +28,8 @@ public class SettingsWindow : Window
     // Column toggle metadata: (display label, getter, setter, order-name).
     private readonly (string Label, string Name)[] columns =
     {
+        ("Login button (LOG)", "Login"),
+        ("Travel button (TP)", "Tp"),
         ("Character", "Character"),
         ("Region", "Region"),
         ("District", "District"),
@@ -44,6 +47,8 @@ public class SettingsWindow : Window
 
     private static bool Get(Configuration c, string name) => name switch
     {
+        "Login" => c.ColLogin,
+        "Tp" => c.ColTp,
         "Character" => c.ColCharacter,
         "Region" => c.ColRegion,
         "District" => c.ColDistrict,
@@ -64,6 +69,8 @@ public class SettingsWindow : Window
     {
         switch (name)
         {
+            case "Login": c.ColLogin = v; break;
+            case "Tp": c.ColTp = v; break;
             case "Character": c.ColCharacter = v; break;
             case "Region": c.ColRegion = v; break;
             case "District": c.ColDistrict = v; break;
@@ -231,6 +238,9 @@ public class SettingsWindow : Window
             }
         }
 
+        if (ImGui.CollapsingHeader("Alerts"))
+            DrawAlerts(cfg);
+
         ImGui.Separator();
         if (!confirmClear)
         {
@@ -246,6 +256,190 @@ public class SettingsWindow : Window
             }
             ImGui.SameLine();
             if (ImGui.Button("Cancel")) confirmClear = false;
+        }
+    }
+
+    // ---- Alerts UI ----
+    private string editingRuleId = "";
+
+    private void DrawAlerts(Configuration cfg)
+    {
+        var enabled = cfg.AlertsEnabled;
+        if (ImGui.Checkbox("Enable open-plot alerts (data from PaissaDB)", ref enabled))
+        {
+            cfg.AlertsEnabled = enabled;
+            cfg.Save();
+        }
+        ImGui.TextDisabled("Crowd-sourced from PaissaDB (zhu.codes). Coverage depends on other players reporting plots, same as the PaissaHouse plugin.");
+
+        var loginOnly = cfg.AlertOnLoginOnly;
+        if (ImGui.Checkbox("Only pop up at login (otherwise pops up whenever a new match appears)", ref loginOnly))
+        {
+            cfg.AlertOnLoginOnly = loginOnly;
+            cfg.Save();
+        }
+
+        var poll = cfg.AlertPollSeconds;
+        ImGui.SetNextItemWidth(120f * ImGuiHelpers.GlobalScale);
+        if (ImGui.InputInt("Check interval (seconds)", ref poll))
+        {
+            cfg.AlertPollSeconds = Math.Max(30, poll);
+            cfg.Save();
+        }
+
+        ImGui.Separator();
+        ImGui.TextUnformatted("Watch rules:");
+
+        AlertRule? toDelete = null;
+        foreach (var rule in cfg.AlertRules)
+        {
+            ImGui.PushID(rule.Id);
+            var on = rule.Enabled;
+            if (ImGui.Checkbox("##en", ref on)) { rule.Enabled = on; cfg.Save(); }
+            ImGui.SameLine();
+            ImGui.TextUnformatted(rule.Describe());
+            ImGui.SameLine();
+            if (ImGui.SmallButton(editingRuleId == rule.Id ? "Done" : "Edit"))
+                editingRuleId = editingRuleId == rule.Id ? "" : rule.Id;
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Delete")) toDelete = rule;
+
+            if (editingRuleId == rule.Id)
+                DrawRuleEditor(cfg, rule);
+
+            ImGui.PopID();
+        }
+
+        if (toDelete != null)
+        {
+            cfg.AlertRules.Remove(toDelete);
+            cfg.Save();
+        }
+
+        if (ImGui.Button("Add watch rule"))
+        {
+            var r = new AlertRule { DistrictId = 641 }; // default Shirogane
+            cfg.AlertRules.Add(r);
+            editingRuleId = r.Id;
+            cfg.Save();
+        }
+    }
+
+    private void DrawRuleEditor(Configuration cfg, AlertRule rule)
+    {
+        ImGui.Indent();
+
+        // Label.
+        var label = rule.Label;
+        ImGui.SetNextItemWidth(220f * ImGuiHelpers.GlobalScale);
+        if (ImGui.InputTextWithHint("Label (optional)", "auto-described if blank", ref label, 64))
+        { rule.Label = label; cfg.Save(); }
+
+        // District (single select; 0 = any).
+        var districts = Game.PlacardReader.AllDistricts;
+        var curDistrict = rule.DistrictId == 0 ? "Any district" : Game.PlacardReader.DistrictDisplayName(rule.DistrictId);
+        ImGui.SetNextItemWidth(200f * ImGuiHelpers.GlobalScale);
+        if (ImGui.BeginCombo("District", curDistrict))
+        {
+            if (ImGui.Selectable("Any district", rule.DistrictId == 0)) { rule.DistrictId = 0; cfg.Save(); }
+            foreach (var (name, id) in districts)
+                if (ImGui.Selectable(name, rule.DistrictId == id)) { rule.DistrictId = id; cfg.Save(); }
+            ImGui.EndCombo();
+        }
+
+        // Plots and wards: comma-separated number inputs (easiest for multi-entry).
+        DrawIntListInput(cfg, "Plots (e.g. 60, 30 — blank = any)", rule.Plots);
+        DrawIntListInput(cfg, "Wards (e.g. 26 — blank = any)", rule.Wards);
+
+        // Sizes (multi).
+        ImGui.TextUnformatted("Sizes (none = any):");
+        ImGui.SameLine();
+        foreach (var sz in new[] { LottoPlotSize.Small, LottoPlotSize.Medium, LottoPlotSize.Large })
+        {
+            var has = rule.Sizes.Contains(sz);
+            if (ImGui.Checkbox($"{sz}##sz", ref has))
+            {
+                if (has && !rule.Sizes.Contains(sz)) rule.Sizes.Add(sz);
+                else rule.Sizes.RemoveAll(x => x == sz);
+                cfg.Save();
+            }
+            ImGui.SameLine();
+        }
+        ImGuiHelpers.ScaledDummy(1f);
+
+        // Scope: regions / DCs / worlds. We show region + DC + world multiselects.
+        DrawScopeSelectors(cfg, rule);
+
+        ImGui.Unindent();
+        ImGui.Separator();
+    }
+
+    private void DrawIntListInput(Configuration cfg, string label, List<int> target)
+    {
+        var text = string.Join(", ", target);
+        ImGui.SetNextItemWidth(220f * ImGuiHelpers.GlobalScale);
+        if (ImGui.InputText(label, ref text, 128))
+        {
+            target.Clear();
+            foreach (var part in text.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                if (int.TryParse(part, out var n) && n > 0 && !target.Contains(n)) target.Add(n);
+            cfg.Save();
+        }
+    }
+
+    private void DrawScopeSelectors(Configuration cfg, AlertRule rule)
+    {
+        var worlds = plugin.Alerts?.Worlds ?? new();
+        var regions = worlds.Select(w => w.Region).Distinct().OrderBy(x => x).ToList();
+        var dcs = worlds.Select(w => w.DataCenter).Distinct().OrderBy(x => x).ToList();
+
+        // Regions.
+        if (ImGui.TreeNode($"Regions ({(rule.Regions.Count == 0 ? "any" : string.Join(",", rule.Regions))})###rgn"))
+        {
+            foreach (var r in regions)
+            {
+                var has = rule.Regions.Contains(r);
+                if (ImGui.Checkbox($"{r}##rgn", ref has))
+                {
+                    if (has) rule.Regions.Add(r); else rule.Regions.Remove(r);
+                    cfg.Save();
+                }
+            }
+            ImGui.TreePop();
+        }
+
+        // Data centers.
+        if (ImGui.TreeNode($"Data centers ({(rule.DataCenters.Count == 0 ? "any" : string.Join(",", rule.DataCenters))})###dc"))
+        {
+            foreach (var d in dcs)
+            {
+                var has = rule.DataCenters.Contains(d);
+                if (ImGui.Checkbox($"{d}##dc", ref has))
+                {
+                    if (has) rule.DataCenters.Add(d); else rule.DataCenters.Remove(d);
+                    cfg.Save();
+                }
+            }
+            ImGui.TreePop();
+        }
+
+        // Worlds (grouped by DC for sanity).
+        if (ImGui.TreeNode($"Worlds ({(rule.Worlds.Count == 0 ? "any" : string.Join(",", rule.Worlds))})###wld"))
+        {
+            foreach (var dc in dcs)
+            {
+                ImGui.TextDisabled(dc);
+                foreach (var w in worlds.Where(x => x.DataCenter == dc).OrderBy(x => x.World))
+                {
+                    var has = rule.Worlds.Contains(w.World);
+                    if (ImGui.Checkbox($"{w.World}##wld", ref has))
+                    {
+                        if (has) rule.Worlds.Add(w.World); else rule.Worlds.Remove(w.World);
+                        cfg.Save();
+                    }
+                }
+            }
+            ImGui.TreePop();
         }
     }
 }
