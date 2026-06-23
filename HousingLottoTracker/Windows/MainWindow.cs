@@ -437,7 +437,7 @@ public class MainWindow : Window
     }
 
     // Plain-text form of a cell (used for the first, click-to-expand column).
-    private static string CellText(BidRecord b, Col c) => c switch
+    private string CellText(BidRecord b, Col c) => c switch
     {
         Col.Character => b.CharacterDisplay,
         Col.Account => AccountName(b),

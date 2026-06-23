@@ -48,8 +48,11 @@ public sealed unsafe class PlacardSaleHook : IDisposable
     private Hook<HandlePlacardSaleInfoDelegate>? hook;
 
     // Movups pattern inside the function body; the function start is at -0xA8.
+    // Assigned by reflection via [Signature]; disable "never assigned" warning.
+#pragma warning disable CS0649
     [Signature("41 0F 10 06 0F 11 43 48 41 0F 10 4E 10 0F 11 4B 58")]
     private IntPtr movupsAddress;
+#pragma warning restore CS0649
 
     private readonly IPluginLog log;
     private readonly Action<SaleInfo> onSale;
