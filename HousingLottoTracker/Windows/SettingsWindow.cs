@@ -348,8 +348,8 @@ public class SettingsWindow : Window
         }
 
         // Plots and wards: comma-separated number inputs (easiest for multi-entry).
-        DrawIntListInput(cfg, "Plots (e.g. 60, 30 — blank = any)", rule.Plots);
-        DrawIntListInput(cfg, "Wards (e.g. 26 — blank = any)", rule.Wards);
+        DrawIntListInput(cfg, "Plots (e.g. 60 or 31-60 — blank = any)", rule.Plots);
+        DrawIntListInput(cfg, "Wards (e.g. 26 or 1-30 — blank = any)", rule.Wards);
 
         // Sizes (multi).
         ImGui.TextUnformatted("Sizes (none = any):");
@@ -376,15 +376,64 @@ public class SettingsWindow : Window
 
     private void DrawIntListInput(Configuration cfg, string label, List<int> target)
     {
-        var text = string.Join(", ", target);
+        // Display the stored numbers collapsed into compact ranges (e.g. "5, 31-60").
+        var text = CollapseToRanges(target);
         ImGui.SetNextItemWidth(220f * ImGuiHelpers.GlobalScale);
         if (ImGui.InputText(label, ref text, 128))
         {
             target.Clear();
-            foreach (var part in text.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                if (int.TryParse(part, out var n) && n > 0 && !target.Contains(n)) target.Add(n);
+            foreach (var n in ExpandRanges(text))
+                if (n > 0 && !target.Contains(n)) target.Add(n);
+            target.Sort();
             cfg.Save();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Accepts single numbers and ranges, e.g. \"5, 31-60\". Blank = any.");
+    }
+
+    // Parse "5, 31-60, 12" into the full set of integers.
+    private static IEnumerable<int> ExpandRanges(string text)
+    {
+        foreach (var part in text.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var seg = part.Trim();
+            var dash = seg.IndexOf('-');
+            if (dash > 0 && dash < seg.Length - 1)
+            {
+                if (int.TryParse(seg[..dash].Trim(), out var lo) &&
+                    int.TryParse(seg[(dash + 1)..].Trim(), out var hi))
+                {
+                    if (lo > hi) (lo, hi) = (hi, lo);
+                    // guard against absurd ranges
+                    if (hi - lo <= 1000)
+                        for (var i = lo; i <= hi; i++) yield return i;
+                }
+            }
+            else if (int.TryParse(seg, out var n))
+            {
+                yield return n;
+            }
+        }
+    }
+
+    // Collapse a sorted set of integers back into compact ranges for display.
+    private static string CollapseToRanges(List<int> nums)
+    {
+        if (nums.Count == 0) return string.Empty;
+        var sorted = nums.Distinct().OrderBy(x => x).ToList();
+        var parts = new List<string>();
+        int start = sorted[0], prev = sorted[0];
+        for (var i = 1; i <= sorted.Count; i++)
+        {
+            if (i < sorted.Count && sorted[i] == prev + 1)
+            {
+                prev = sorted[i];
+                continue;
+            }
+            parts.Add(start == prev ? $"{start}" : $"{start}-{prev}");
+            if (i < sorted.Count) { start = sorted[i]; prev = sorted[i]; }
+        }
+        return string.Join(", ", parts);
     }
 
     private void DrawScopeSelectors(Configuration cfg, AlertRule rule)

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using HousingLottoTracker.Data;
@@ -428,7 +430,6 @@ public class MainWindow : Window
         ImGui.TableNextRow();
 
         var isOpen = expandedKey == b.Key;
-        var tri = isOpen ? "\u25BC " : "\u25B6 ";
 
         // The expand toggle lives on the first non-button column so button clicks
         // (Login / TP) aren't swallowed by the row-wide selectable.
@@ -446,8 +447,15 @@ public class MainWindow : Window
             }
             else if (ci == anchorIdx)
             {
+                // Caret in the FontAwesome icon font so it renders crisply instead of
+                // boxing. Drawn inline, then the row-wide selectable carries the text.
+                ImGui.PushFont(UiBuilder.IconFont);
+                ImGui.TextUnformatted(isOpen ? FontAwesomeIcon.CaretDown.ToIconString() : FontAwesomeIcon.CaretRight.ToIconString());
+                ImGui.PopFont();
+                ImGui.SameLine(0, 4f * ImGuiHelpers.GlobalScale);
+
                 var label = CellText(b, c);
-                if (ImGui.Selectable($"{tri}{label}###row{b.Key}", isOpen, ImGuiSelectableFlags.SpanAllColumns))
+                if (ImGui.Selectable($"{label}###row{b.Key}", isOpen, ImGuiSelectableFlags.SpanAllColumns))
                     expandedKey = isOpen ? "" : b.Key;
             }
             else
@@ -470,7 +478,7 @@ public class MainWindow : Window
                 ImGui.TextDisabled("");
                 return;
             }
-            if (ImGui.SmallButton($"\uE05D###login{b.Key}"))
+            if (ImGuiComponents.IconButton($"login{b.Key}", FontAwesomeIcon.DoorOpen))
             {
                 var r = plugin.RelogTo(b.CharacterName, b.WorldName);
                 actionResult = string.IsNullOrEmpty(r)
@@ -488,7 +496,7 @@ public class MainWindow : Window
                 ImGui.TextDisabled("");
                 return;
             }
-            if (ImGui.SmallButton($"\u27A4###tp{b.Key}"))
+            if (ImGuiComponents.IconButton($"tp{b.Key}", FontAwesomeIcon.LocationArrow))
             {
                 var r = plugin.LifestreamTo(b);
                 actionResult = string.IsNullOrEmpty(r)
