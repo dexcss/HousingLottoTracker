@@ -1,72 +1,54 @@
-## Installing (custom repo)
-
-1. In game: `/xlsettings` -> Experimental -> Custom Plugin Repositories.
-2. Add: `https://raw.githubusercontent.com/dexcss/DalamudPlugins/main/repo.json`
-3. Save, then find "Housing Lotto Tracker" in the plugin installer.
-
 # Housing Lotto Tracker
 
-A Dalamud plugin (API15) that passively tracks your FFXIV housing lottery bids across all your characters.
+A Dalamud plugin that passively tracks your FFXIV housing lottery bids across all your characters, and alerts you when plots you're watching open up.
 
 Open with `/hlt` (alias `/lotto`).
 
-## What it tracks (one row per bid)
+## Install
 
-- Character (with world) and region (JP/NA/EU/OCE/CN/KR/CLD/TCN)
-- District, ward, plot, and plot size
-- FC vs Personal bid
-- Entrant count (as read from the placard)
-- Your entry number (auto-grabbed if the game shows it; editable otherwise)
-- Entry date and results-available date, with a live countdown
-- Outcome: Pending / Won / Lost / Claimed
+In Dalamud, go to **Settings → Experimental → Custom Plugin Repositories**, add the URL below, save, then install **Housing Lotto Tracker** from the plugin installer.
 
-## How capture works
+```
+https://raw.githubusercontent.com/dexcss/DalamudPlugins/main/repo.json
+```
 
-Capture is **passive**. There are two ways a bid gets recorded:
+## What it tracks
 
-1. **Automatically when you place a bid.** The in-game confirmation ("You have submitted a lottery entry for…") is read the moment you enter, recording the character, world, district, ward, plot, your lottery number, plot size, and the exact results date.
-2. **By checking the game's own records** (for bids placed before installing the plugin). Open **Duty → Timers → Estate → Housing Lottery Status** to record the entry, then walk up to that plot and open its placard to fill in the precise results date. Opening the placard alone never creates a row — it only enriches a bid the plugin already knows about, so browsing other for-sale plots won't clutter the list.
+One row per bid, showing: character (with world), region, district, ward, plot, plot size, FC vs Personal, your bid number, the entry date, the results date with a live countdown, and the outcome (Pending / Won / Lost / Claimed). Columns can be shown, hidden, and reordered in Settings.
 
-You can also enter a bid **fully by hand** with the **Add bid** button, for plots you can't currently visit or anything you'd rather type in yourself.
+## How bids are recorded
 
-Wins are auto-detected when the results placard's confirmation dialog congratulates you.
+Capture is passive — you don't type anything for a normal bid.
+
+- **When you place a bid**, the in-game confirmation ("You have submitted a lottery entry for…") is read automatically, filling in the character, world, location, your bid number, plot size, and exact results date.
+- **For bids placed before installing**, open **Duty → Timers → Estate → Housing Lottery Status** to record the entry, then open that plot's placard to lock in the precise results date. Opening a placard never creates a row on its own — it only enriches a bid already recorded, so browsing for-sale plots won't clutter the list.
+- **Add bid** lets you enter one fully by hand, for plots you can't currently visit.
+
+Wins are detected automatically when the results placard congratulates you.
 
 ## Travel & login buttons
 
-If you have **Lifestream** and/or **AutoRetainer** installed, each row shows two small buttons:
+With **Lifestream** and/or **AutoRetainer** installed, each row gets two buttons:
 
-- **LOG** — logs into that bid's character via AutoRetainer's relog.
-- **TP** — Lifestream-travels to that bid's plot.
+- **Login** — logs into that bid's character (via AutoRetainer relog).
+- **Travel** — Lifestreams to that bid's plot.
 
-Both columns are on by default and can be toggled in Settings → Columns. They're hidden per-row when the relevant plugin isn't installed or the row lacks the needed info.
+Both are on by default and toggleable in Settings → Columns. Each is hidden per-row when the matching plugin isn't installed.
 
 ## Open-plot alerts
 
-Set up watch rules (Settings → Alerts) to be notified when a matching plot becomes available, using crowd-sourced data from **PaissaDB** (zhu.codes) — the same source the PaissaHouse plugin uses.
+Create watch rules in **Settings → Alerts** to be notified when a matching plot opens, using crowd-sourced data from **PaissaDB** (the same source as the PaissaHouse plugin).
 
-A rule can be as broad or specific as you like: *"any Shirogane Plot 60 on any server,"* or *"Shirogane Plot 60, Ward 26, on Ultros."* You can multi-select plots, wards, sizes, worlds, data centers, and regions; leaving a filter blank means "any."
+Rules can be broad or specific — *"any Shirogane Plot 60, any server"* or *"Shirogane Plot 60, Ward 26, on Ultros."* You can multi-select plots, wards, sizes, worlds, data centers, and regions; a blank filter means "any." Plot and ward fields accept ranges, so `31-60` covers a whole subdivision.
 
-When a match appears, a popup lists it (with a Travel button if Lifestream is installed). Hitting **Seen** acknowledges that specific open plot — it won't alert again until that plot fills and a new one opens. You can have it pop up only at login, or whenever a new match appears. Coverage depends on other players reporting plots, exactly like PaissaHouse.
+When a match appears a popup lists it (with a Travel button if Lifestream is installed). Hitting **Seen** acknowledges that plot so it won't alert again until it fills and re-opens. You can have alerts pop only at login or whenever a new match appears, and set the check interval. Coverage depends on other players reporting plots, exactly like PaissaHouse.
 
-## Honest limitations
+## Notes & limitations
 
-- **The game does not persist your personal ticket number.** It's shown briefly at
-  bid time. The plugin grabs it if it's visible when you read the placard;
-  otherwise the field is editable so you can type it in.
-- **Cycle timing is day-accurate, not second-accurate.** Results dates are derived
-  from the global 9-day lottery loop (5-day entry + 4-day results) anchored to a
-  known cycle. Regional reset *hours* aren't modelled, which only nudges the day
-  boundary. If precise per-region reset hours are needed later, they can be layered
-  onto `LottoCycle`.
-- Entrant counts reflect the value at your last placard read, not live updates.
-
-## Storage
-
-Shared storage is on by default: all clients on the same Windows user share one
-`shared.json`, regardless of `--roamingPath`, with multi-client-safe merging (same
-model as FC Tracker). Turn it off in Settings to use the per-install config instead.
+- The game doesn't store your bid number after entry — it's captured live from the confirmation. If a bid is added another way, the number is an editable field.
+- Results dates come from the game's own data (the entry confirmation or the placard deadline). A bid recorded only from the Timers panel shows "date unknown" until you open its placard once.
+- Shared storage is on by default: all clients on the same Windows user share one dataset regardless of `--roamingPath`, with multi-client-safe merging. Turn it off in Settings for a per-install config.
 
 ## Building
 
-CI builds on tag push (`v1.0.0.0`). To bump the version, update **all three**:
-`HousingLottoTracker.csproj`, `HousingLottoTracker.json`, and `repo.json`.
+CI builds and releases on tag push (e.g. `v1.0.0.0`). To bump the version, update all three: `HousingLottoTracker.csproj`, `HousingLottoTracker.json`, and `repo.json`.
