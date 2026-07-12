@@ -101,6 +101,39 @@ public sealed class AlertWatcher : IDisposable
         _ = Task.Run(PollAsync);
     }
 
+    // True while a PaissaDB poll is in flight (for UI feedback).
+    public bool IsPolling => polling;
+
+    // When the last successful poll completed (UTC), or MinValue if never.
+    public DateTime LastPollUtc => lastPoll;
+
+    // Run a poll right now, ignoring the interval. No-op if one is already running
+    // or there's nothing to check. Returns false if it couldn't start.
+    public bool ForcePoll()
+    {
+        if (!cfg.AlertsEnabled) return false;
+        if (cfg.AlertRules.Count == 0) return false;
+        if (polling) return false;
+
+        lastPoll = DateTime.UtcNow;
+        polling = true;
+        _ = Task.Run(PollAsync);
+        return true;
+    }
+
+    // Forget every acknowledgement and immediately re-check. Anything still open that
+    // matches a rule will alert again.
+    public bool ClearSeenAndRecheck()
+    {
+        lock (gate)
+        {
+            active.Clear();
+        }
+        cfg.AcknowledgedAlerts.Clear();
+        saveConfig();
+        return ForcePoll();
+    }
+
     private async Task PollAsync()
     {
         try

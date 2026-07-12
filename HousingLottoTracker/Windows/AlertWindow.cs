@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
@@ -26,12 +27,24 @@ public class AlertWindow : Window
         };
     }
 
+    private string status = "";
+    private DateTime statusUntil = DateTime.MinValue;
+
     public override void Draw()
     {
         var alerts = watcher.ActiveAlerts();
+
+        // ---- Controls (always shown, even with no alerts) ----
+        DrawControls();
+        ImGui.Separator();
+
         if (alerts.Count == 0)
         {
-            ImGui.TextDisabled("No active alerts.");
+            ImGui.TextDisabled(watcher.IsPolling
+                ? "Checking PaissaDB..."
+                : "No matching plots are open right now.");
+            if (watcher.LastPollUtc != DateTime.MinValue)
+                ImGui.TextDisabled($"Last checked: {watcher.LastPollUtc.ToLocalTime():HH:mm:ss}");
             if (ImGui.Button("Close")) IsOpen = false;
             return;
         }
@@ -67,5 +80,45 @@ public class AlertWindow : Window
         }
         ImGui.SameLine();
         if (ImGui.Button("Close")) IsOpen = false;
+    }
+
+    private void DrawControls()
+    {
+        var busy = watcher.IsPolling;
+
+        if (busy) ImGui.BeginDisabled();
+        if (ImGui.Button("Re-check now"))
+        {
+            SetStatus(watcher.ForcePoll()
+                ? "Checking PaissaDB..."
+                : "Nothing to check — add a watch rule in Settings.");
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Clear seen & re-check"))
+        {
+            SetStatus(watcher.ClearSeenAndRecheck()
+                ? "Cleared acknowledgements — re-checking..."
+                : "Cleared acknowledgements. Add a watch rule in Settings to check.");
+        }
+        if (busy) ImGui.EndDisabled();
+
+        ImGui.SameLine();
+        if (ImGui.Button("Settings")) plugin.OpenSettings();
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Manage your watch rules.");
+
+        if (busy)
+            ImGui.TextDisabled("Checking PaissaDB...");
+        else if (!string.IsNullOrEmpty(status) && DateTime.UtcNow < statusUntil)
+            ImGui.TextDisabled(status);
+        else if (watcher.LastPollUtc != DateTime.MinValue)
+            ImGui.TextDisabled($"Last checked: {watcher.LastPollUtc.ToLocalTime():HH:mm:ss}");
+    }
+
+    private void SetStatus(string s)
+    {
+        status = s;
+        statusUntil = DateTime.UtcNow.AddSeconds(6);
     }
 }

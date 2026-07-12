@@ -136,6 +136,7 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public void OpenSettings() => settingsWindow.IsOpen = true;
+    public void OpenAlerts() => alertWindow.IsOpen = true;
     private void OpenMain() => mainWindow.IsOpen = true;
     private void OnCommand(string command, string args) => mainWindow.Toggle();
 

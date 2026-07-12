@@ -43,6 +43,8 @@ Rules can be broad or specific — *"any Shirogane Plot 60, any server"* or *"Sh
 
 When a match appears a popup lists it (with a Travel button if Lifestream is installed). Hitting **Seen** acknowledges that plot so it won't alert again until it fills and re-opens. You can have alerts pop only at login or whenever a new match appears, and set the check interval. Coverage depends on other players reporting plots, exactly like PaissaHouse.
 
+The **Alerts** button on the main window opens the alerts page any time (showing a count when matches are waiting). From there, **Re-check now** forces an immediate PaissaDB check instead of waiting for the interval, and **Clear seen & re-check** forgets every acknowledgement and re-checks — so anything still open that matches your rules will alert again.
+
 ## Notes & limitations
 
 - The game doesn't store your bid number after entry — it's captured live from the confirmation. If a bid is added another way, the number is an editable field.

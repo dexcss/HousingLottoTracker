@@ -143,6 +143,20 @@ public class MainWindow : Window
         ImGui.SameLine();
         if (ImGui.Button("Settings")) plugin.OpenSettings();
         ImGui.SameLine();
+        var alertCount = plugin.Alerts?.ActiveCount ?? 0;
+        if (alertCount > 0)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.85f, 0.4f, 1f));
+            if (ImGui.Button($"Alerts ({alertCount})")) plugin.OpenAlerts();
+            ImGui.PopStyleColor();
+        }
+        else
+        {
+            if (ImGui.Button("Alerts")) plugin.OpenAlerts();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Open the alerts window — re-check PaissaDB, or clear seen and re-check.");
+        ImGui.SameLine();
         var hidePast = cfg.HidePastCycles;
         if (ImGui.Checkbox("Hide finished", ref hidePast))
         {
