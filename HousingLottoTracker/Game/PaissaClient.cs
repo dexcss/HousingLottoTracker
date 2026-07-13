@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using HousingLottoTracker.Data;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace HousingLottoTracker.Game;
 
@@ -42,8 +43,36 @@ public sealed class PaissaClient : IDisposable
         public ushort plot_number { get; set; }   // 0-based from the API
         public ushort size { get; set; }          // 0 small, 1 medium, 2 large
         public uint price { get; set; }
-        public byte purchase_system { get; set; } // 1=Lottery, 2=FC, 4=Individual (flags)
+
+        // PaissaDB may serialise this as a number (flags: 1=Lottery, 2=FC, 4=Individual)
+        // or as a string ("Lottery"). Accept either.
+        [JsonProperty("purchase_system")]
+        public JToken? purchase_system { get; set; }
+
+        public uint? lotto_entries { get; set; }
+        public uint? lotto_phase_until { get; set; }
+
+        // True when this plot is sold via lottery, tolerant of either encoding.
+        public bool IsLottery()
+        {
+            if (purchase_system == null) return false;
+            try
+            {
+                if (purchase_system.Type == JTokenType.Integer)
+                    return (purchase_system.Value<int>() & 1) != 0;
+
+                var s = purchase_system.Value<string>() ?? string.Empty;
+                if (s.IndexOf("lottery", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                // Some encoders emit the numeric flags as a string.
+                if (int.TryParse(s, out var n)) return (n & 1) != 0;
+            }
+            catch { /* fall through */ }
+            return false;
+        }
     }
+
+    // Optional diagnostic sink (set by the plugin) so failures/oddities are visible.
+    public Action<string>? Debug;
 
     // Fetch open plots for one world + district. Returns an empty list on any error
     // (network down, world has no data, etc.) so the caller degrades gracefully.
@@ -54,16 +83,25 @@ public sealed class PaissaClient : IDisposable
         try
         {
             var resp = await http.GetAsync($"{ApiBase}/worlds/{worldId}/{districtId}");
-            if (!resp.IsSuccessStatusCode) return outList;
+            if (!resp.IsSuccessStatusCode)
+            {
+                Debug?.Invoke($"PaissaDB {worldName}/{districtId}: HTTP {(int)resp.StatusCode}");
+                return outList;
+            }
 
             var json = await resp.Content.ReadAsStringAsync();
             var detail = JsonConvert.DeserializeObject<DistrictDetail>(json);
-            if (detail?.open_plots == null) return outList;
+            if (detail?.open_plots == null)
+            {
+                Debug?.Invoke($"PaissaDB {worldName}/{districtId}: no open_plots in response");
+                return outList;
+            }
 
+            var lotteryCount = 0;
             foreach (var op in detail.open_plots)
             {
-                // purchase_system is a flag set; lottery bit = 1.
-                var isLottery = (op.purchase_system & 1) != 0;
+                var isLottery = op.IsLottery();
+                if (isLottery) lotteryCount++;
 
                 outList.Add(new OpenPlot
                 {
@@ -85,8 +123,13 @@ public sealed class PaissaClient : IDisposable
                     IsLottery = isLottery,
                 });
             }
+
+            Debug?.Invoke($"PaissaDB {worldName}/{PlacardReader.DistrictDisplayName(districtId)}: {detail.open_plots.Length} open, {lotteryCount} lottery");
         }
-        catch { /* network/parse error -> empty */ }
+        catch (Exception ex)
+        {
+            Debug?.Invoke($"PaissaDB {worldName}/{districtId} failed: {ex.Message}");
+        }
         return outList;
     }
 }

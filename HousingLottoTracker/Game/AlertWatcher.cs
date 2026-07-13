@@ -32,6 +32,10 @@ public sealed class AlertWatcher : IDisposable
     private DateTime lastPoll = DateTime.MinValue;
     private bool polling;
 
+    // Bumped whenever acknowledgements are cleared, so an in-flight poll can tell
+    // its snapshot is stale and skip the expiry rebuild.
+    private int ackGeneration;
+
     public AlertWatcher(Configuration cfg, PaissaClient client, IDataManager data, IPluginLog log, Action saveConfig)
     {
         this.cfg = cfg;
@@ -107,13 +111,23 @@ public sealed class AlertWatcher : IDisposable
     // When the last successful poll completed (UTC), or MinValue if never.
     public DateTime LastPollUtc => lastPoll;
 
-    // Run a poll right now, ignoring the interval. No-op if one is already running
-    // or there's nothing to check. Returns false if it couldn't start.
+    // Set when a poll is requested while one is already running; the running poll
+    // kicks off a fresh one when it finishes so the request isn't silently dropped.
+    private bool repollQueued;
+
+    // Run a poll right now, ignoring the interval. If a poll is already in flight,
+    // queue another to run immediately after it. Returns false only when there's
+    // nothing to check.
     public bool ForcePoll()
     {
         if (!cfg.AlertsEnabled) return false;
         if (cfg.AlertRules.Count == 0) return false;
-        if (polling) return false;
+
+        if (polling)
+        {
+            repollQueued = true;
+            return true;
+        }
 
         lastPoll = DateTime.UtcNow;
         polling = true;
@@ -129,13 +143,16 @@ public sealed class AlertWatcher : IDisposable
         {
             active.Clear();
         }
+        ackGeneration++;                 // invalidate any in-flight poll's ack snapshot
         cfg.AcknowledgedAlerts.Clear();
         saveConfig();
+        log.Info("Housing Lotto Tracker: cleared all alert acknowledgements; re-checking.");
         return ForcePoll();
     }
 
     private async Task PollAsync()
     {
+        var generationAtStart = ackGeneration;
         try
         {
             EnsureWorldTable();
@@ -154,18 +171,22 @@ public sealed class AlertWatcher : IDisposable
                 allOpen.AddRange(plots);
             }
 
+            log.Info($"[HLT alerts] polled {targets.Count} world/district targets for {rules.Count} rule(s); {allOpen.Count} open plots, {allOpen.Count(p => p.IsLottery)} lottery.");
+
             var openKeys = new HashSet<string>(allOpen.Select(p => p.Key));
 
             // Expire acknowledgements for plots that are no longer open, so they can
-            // re-alert when they next become available.
-            var changed = false;
-            if (cfg.AcknowledgedAlerts.Count > 0)
+            // re-alert when they next become available. Skip this entirely if a
+            // "clear seen" happened while this poll was in flight — otherwise we'd
+            // resurrect the very acks the user just cleared.
+            if (ackGeneration == generationAtStart && cfg.AcknowledgedAlerts.Count > 0)
             {
+                var changed = false;
                 var stillValid = new List<string>();
                 foreach (var ack in cfg.AcknowledgedAlerts)
                 {
                     // ack key = ruleId:worldId:districtId:ward:plot ; the plot part is
-                    // the trailing 4 segments after the first ':'.
+                    // everything after the first ':'.
                     var firstColon = ack.IndexOf(':');
                     var plotKey = firstColon >= 0 ? ack[(firstColon + 1)..] : ack;
                     if (openKeys.Contains(plotKey)) stillValid.Add(ack);
@@ -179,6 +200,8 @@ public sealed class AlertWatcher : IDisposable
             }
 
             // Match open plots against rules; add new (unacknowledged) ones.
+            var newCount = 0;
+            var suppressedCount = 0;
             lock (gate)
             {
                 foreach (var plot in allOpen)
@@ -187,7 +210,7 @@ public sealed class AlertWatcher : IDisposable
                     {
                         if (!rule.Matches(plot)) continue;
                         var ackKey = $"{rule.Id}:{plot.Key}";
-                        if (cfg.AcknowledgedAlerts.Contains(ackKey)) continue;
+                        if (cfg.AcknowledgedAlerts.Contains(ackKey)) { suppressedCount++; continue; }
                         if (active.ContainsKey(ackKey)) continue;
 
                         active[ackKey] = new ActiveAlert
@@ -196,10 +219,13 @@ public sealed class AlertWatcher : IDisposable
                             RuleLabel = rule.Describe(),
                             Plot = plot,
                         };
-                        log.Info($"Housing Lotto Tracker alert: {plot.District} W{plot.Ward} P{plot.Plot} ({plot.WorldName}) matched \"{rule.Describe()}\"");
+                        newCount++;
+                        log.Info($"[HLT alerts] MATCH {plot.District} W{plot.Ward} P{plot.Plot} ({plot.WorldName}) <- \"{rule.Describe()}\"");
                     }
                 }
             }
+
+            log.Info($"[HLT alerts] {newCount} new alert(s), {suppressedCount} suppressed as already seen, {active.Count} active total.");
 
             lastOpenPlotKeys = openKeys;
         }
@@ -210,6 +236,13 @@ public sealed class AlertWatcher : IDisposable
         finally
         {
             polling = false;
+
+            // A poll was requested while this one was running — honour it now.
+            if (repollQueued)
+            {
+                repollQueued = false;
+                ForcePoll();
+            }
         }
     }
 

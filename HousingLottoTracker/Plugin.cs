@@ -63,6 +63,7 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow = new MainWindow(this);
         settingsWindow = new SettingsWindow(this);
         paissa = new PaissaClient();
+        paissa.Debug = msg => Log.Info($"[HLT alerts] {msg}");
         alertWatcher = new AlertWatcher(Config, paissa, DataManager, Log, () => Config.Save());
         alertWindow = new AlertWindow(this, alertWatcher);
         windowSystem.AddWindow(mainWindow);
