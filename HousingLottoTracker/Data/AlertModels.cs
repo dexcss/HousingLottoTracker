@@ -18,6 +18,22 @@ public class OpenPlot
     public int Plot;          // 1-based for display
     public LottoPlotSize Size = LottoPlotSize.Unknown;
     public bool IsLottery;
+
+    // Lottery phase from PaissaDB: 1 = entries open, 2 = results period,
+    // 3 = unavailable, -1 = unknown/not reported.
+    public int LottoPhaseValue = -1;
+
+    // True when entries are actually being accepted (or the phase is unknown).
+    public bool EntriesOpen => LottoPhaseValue == -1 || LottoPhaseValue == 1;
+
+    public string PhaseText => LottoPhaseValue switch
+    {
+        1 => "entries open",
+        2 => "results period",
+        3 => "unavailable",
+        _ => "phase unknown",
+    };
+
     public DateTime SeenUtc = DateTime.UtcNow;
 
     // Stable identity for an open-plot instance within a lottery cycle. Used to

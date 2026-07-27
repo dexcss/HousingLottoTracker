@@ -650,6 +650,14 @@ public class MainWindow : Window
         if (b.WinningNumber >= 0)
             ImGui.TextUnformatted($"Winning number: {b.WinningNumber}");
 
+        // Manual FC / Personal correction.
+        var isFc = b.IsFreeCompany;
+        if (ImGui.Checkbox($"Free Company bid##fc{b.Key}", ref isFc))
+        {
+            b.IsFreeCompany = isFc;
+            plugin.PersistBid(b);
+        }
+
         // Outcome override.
         ImGui.TextUnformatted("Outcome:");
         var outcomes = new[] { LottoOutcome.Pending, LottoOutcome.Won, LottoOutcome.Lost, LottoOutcome.Claimed };

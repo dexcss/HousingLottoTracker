@@ -202,10 +202,19 @@ public sealed class AlertWatcher : IDisposable
             // Match open plots against rules; add new (unacknowledged) ones.
             var newCount = 0;
             var suppressedCount = 0;
+            var phaseSkipped = 0;
             lock (gate)
             {
                 foreach (var plot in allOpen)
                 {
+                    // During the results period a plot is still "open" in PaissaDB but
+                    // can't be bid on, so by default we don't alert for it.
+                    if (cfg.AlertOnlyWhenEntriesOpen && !plot.EntriesOpen)
+                    {
+                        phaseSkipped++;
+                        continue;
+                    }
+
                     foreach (var rule in rules)
                     {
                         if (!rule.Matches(plot)) continue;
@@ -220,12 +229,12 @@ public sealed class AlertWatcher : IDisposable
                             Plot = plot,
                         };
                         newCount++;
-                        log.Info($"[HLT alerts] MATCH {plot.District} W{plot.Ward} P{plot.Plot} ({plot.WorldName}) <- \"{rule.Describe()}\"");
+                        log.Info($"[HLT alerts] MATCH {plot.District} W{plot.Ward} P{plot.Plot} ({plot.WorldName}) [{plot.PhaseText}] <- \"{rule.Describe()}\"");
                     }
                 }
             }
 
-            log.Info($"[HLT alerts] {newCount} new alert(s), {suppressedCount} suppressed as already seen, {active.Count} active total.");
+            log.Info($"[HLT alerts] {newCount} new alert(s), {suppressedCount} already seen, {phaseSkipped} skipped (results/unavailable phase), {active.Count} active total.");
 
             lastOpenPlotKeys = openKeys;
         }

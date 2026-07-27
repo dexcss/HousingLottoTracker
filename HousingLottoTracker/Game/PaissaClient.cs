@@ -52,6 +52,39 @@ public sealed class PaissaClient : IDisposable
         public uint? lotto_entries { get; set; }
         public uint? lotto_phase_until { get; set; }
 
+        // Lottery phase: 1 = Available (entries open), 2 = InResultsPeriod,
+        // 3 = Unavailable. May arrive as a number or a string.
+        [JsonProperty("lotto_phase")]
+        public JToken? lotto_phase { get; set; }
+
+        // -1 = unknown/absent.
+        public int PhaseValue()
+        {
+            if (lotto_phase == null || lotto_phase.Type == JTokenType.Null) return -1;
+            try
+            {
+                if (lotto_phase.Type == JTokenType.Integer)
+                    return lotto_phase.Value<int>();
+
+                var s = lotto_phase.Value<string>() ?? string.Empty;
+                if (s.IndexOf("resultsperiod", StringComparison.OrdinalIgnoreCase) >= 0
+                    || s.IndexOf("results", StringComparison.OrdinalIgnoreCase) >= 0) return 2;
+                if (s.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0) return 3;
+                if (s.IndexOf("available", StringComparison.OrdinalIgnoreCase) >= 0) return 1;
+                if (int.TryParse(s, out var n)) return n;
+            }
+            catch { /* fall through */ }
+            return -1;
+        }
+
+        // True when the lottery is actually accepting entries. If the API doesn't
+        // report a phase at all, we don't exclude the plot (treat unknown as open).
+        public bool EntriesOpen()
+        {
+            var p = PhaseValue();
+            return p == -1 || p == 1;
+        }
+
         // True when this plot is sold via lottery, tolerant of either encoding.
         public bool IsLottery()
         {
@@ -98,10 +131,13 @@ public sealed class PaissaClient : IDisposable
             }
 
             var lotteryCount = 0;
+            var openForEntryCount = 0;
             foreach (var op in detail.open_plots)
             {
                 var isLottery = op.IsLottery();
+                var phase = op.PhaseValue();
                 if (isLottery) lotteryCount++;
+                if (isLottery && op.EntriesOpen()) openForEntryCount++;
 
                 outList.Add(new OpenPlot
                 {
@@ -121,10 +157,11 @@ public sealed class PaissaClient : IDisposable
                         _ => LottoPlotSize.Unknown,
                     },
                     IsLottery = isLottery,
+                    LottoPhaseValue = phase,
                 });
             }
 
-            Debug?.Invoke($"PaissaDB {worldName}/{PlacardReader.DistrictDisplayName(districtId)}: {detail.open_plots.Length} open, {lotteryCount} lottery");
+            Debug?.Invoke($"PaissaDB {worldName}/{PlacardReader.DistrictDisplayName(districtId)}: {detail.open_plots.Length} open, {lotteryCount} lottery, {openForEntryCount} accepting entries");
         }
         catch (Exception ex)
         {

@@ -58,6 +58,9 @@ public class Configuration : IPluginConfiguration
     public List<string> AcknowledgedAlerts = new();
     public int AlertPollSeconds = 120;       // how often to poll PaissaDB
     public bool AlertOnLoginOnly = false;    // if true, only surface the popup at login
+    // Only alert for plots actually accepting entries. During the results phase a plot
+    // still shows as "open" in PaissaDB but you can't bid on it, so alerting is noise.
+    public bool AlertOnlyWhenEntriesOpen = true;
 
     [NonSerialized] private IDalamudPluginInterface? pluginInterface;
 

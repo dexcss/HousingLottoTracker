@@ -58,7 +58,7 @@ public class AlertWindow : Window
             ImGui.PushID(a.AckKey);
             var p = a.Plot;
             ImGui.TextUnformatted($"{p.District} Ward {p.Ward}, Plot {p.Plot}  ({p.SizeText})");
-            ImGui.TextDisabled($"{p.WorldName} · {p.DataCenter} · {p.Region}");
+            ImGui.TextDisabled($"{p.WorldName} · {p.DataCenter} · {p.Region} · {p.PhaseText}");
             ImGui.TextDisabled($"matches: {a.RuleLabel}");
 
             if (ImGui.Button($"Seen###seen{a.AckKey}"))

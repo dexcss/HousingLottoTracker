@@ -21,6 +21,7 @@ public static class ChatLotteryParser
         public string District = string.Empty;
         public int LotteryNumber = -1;
         public DateTime? ResultsLocal;   // parsed in the player's local time
+        public bool IsFreeCompany;       // detected from FC-bid wording, if present
     }
 
     // "submitted a lottery entry for plot 38, ward 30, Shirogane"
@@ -60,6 +61,11 @@ public static class ChatLotteryParser
         p.Plot = ParseInt(em.Groups["plot"].Value);
         p.Ward = ParseInt(em.Groups["ward"].Value);
         p.District = em.Groups["district"].Value.Trim();
+
+        // FC lottery entries mention the free company; personal ones don't.
+        var lower = text.ToLowerInvariant();
+        if (lower.Contains("free company") || lower.Contains("on behalf of"))
+            p.IsFreeCompany = true;
 
         var nm = NumberRx.Match(text);
         if (nm.Success) p.LotteryNumber = ParseInt(nm.Groups["num"].Value);

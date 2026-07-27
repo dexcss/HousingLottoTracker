@@ -381,7 +381,7 @@ public sealed class Plugin : IDalamudPlugin
                 if (rec.Size == LottoPlotSize.Unknown)
                     rec.Size = PlacardReader.ResolvePlotSize(DataManager, rec.TerritoryTypeId, rec.Plot);
                 PersistBid(rec);
-                Log.Info($"Housing Lotto Tracker: hook updated {rec.LocationText} ({rec.TypeText}) results {rec.ResultsAvailableUtc:yyyy-MM-dd HH:mm}");
+                Log.Info($"Housing Lotto Tracker: hook updated {rec.LocationText} ({rec.TypeText}) tenant={info.TenantType} results {rec.ResultsAvailableUtc:yyyy-MM-dd HH:mm}");
             }
         }
         catch (Exception ex)
@@ -422,7 +422,7 @@ public sealed class Plugin : IDalamudPlugin
 
             var rec = BidStore.CaptureFromChat(
                 Config.Bids, parsed, territoryId, contentId, name, world, region,
-                AccountKey, isFreeCompany: false, size);
+                AccountKey, isFreeCompany: parsed.IsFreeCompany, size);
 
             PersistBid(rec);
             Log.Info($"Housing Lotto Tracker: recorded bid {rec.LocationText} #{rec.EntryNumber} for {rec.CharacterDisplay}");

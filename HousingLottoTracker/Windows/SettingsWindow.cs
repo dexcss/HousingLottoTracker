@@ -279,6 +279,14 @@ public class SettingsWindow : Window
             cfg.Save();
         }
 
+        var entriesOnly = cfg.AlertOnlyWhenEntriesOpen;
+        if (ImGui.Checkbox("Only alert when entries are open", ref entriesOnly))
+        {
+            cfg.AlertOnlyWhenEntriesOpen = entriesOnly;
+            cfg.Save();
+        }
+        ImGui.TextDisabled("During the results period a plot still shows as open, but you can't bid on it. Leave this on to skip those.");
+
         var poll = cfg.AlertPollSeconds;
         ImGui.SetNextItemWidth(120f * ImGuiHelpers.GlobalScale);
         if (ImGui.InputInt("Check interval (seconds)", ref poll))

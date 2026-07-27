@@ -191,7 +191,11 @@ public static class BidStore
         }
         rec.Ward = (byte)p.Ward;
         rec.Plot = (byte)p.Plot;
-        rec.IsFreeCompany = isFreeCompany;
+        // The chat confirmation doesn't reliably state FC-vs-personal, so only ever
+        // set FC to true when positively detected; never overwrite an existing FC
+        // flag (which the Timers panel or the game hook may already have set) with
+        // a default of false.
+        if (isFreeCompany) rec.IsFreeCompany = true;
         rec.Phase = LottoPhase.Entry;
         if (size != LottoPlotSize.Unknown) rec.Size = size;
 
