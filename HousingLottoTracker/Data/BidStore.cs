@@ -108,8 +108,10 @@ public static class BidStore
         // else: leave whatever a prior precise capture set (may stay null).
 
         // --- Outcome inference ---
-        // Win: explicit hint, or (winning number known AND matches your entry).
-        if (rec.Outcome == LottoOutcome.Pending)
+        // Only infer an outcome during the RESULTS phase. During entry, there is no
+        // winning number, so any number scraped from the placard is not one — this
+        // previously caused false "Won" results.
+        if (rec.Outcome == LottoOutcome.Pending && snap.Phase == LottoPhase.Results)
         {
             if (snap.WonHint)
             {
@@ -121,12 +123,6 @@ public static class BidStore
                 rec.Outcome = rec.WinningNumber == rec.EntryNumber
                     ? LottoOutcome.Won
                     : LottoOutcome.Lost;
-                rec.OutcomeRecordedUtc = now;
-            }
-            else if (rec.ClaimDeadlineUtc != null && now > rec.ClaimDeadlineUtc.Value)
-            {
-                // Cycle fully elapsed and we never recorded a win → treat as lost.
-                rec.Outcome = LottoOutcome.Lost;
                 rec.OutcomeRecordedUtc = now;
             }
         }
@@ -201,16 +197,14 @@ public static class BidStore
 
         if (p.LotteryNumber >= 0) rec.EntryNumber = p.LotteryNumber;
 
-        // Timing: use the exact chat datetime when present.
+        // Timing: only set a results date from the exact chat datetime. Never derive
+        // one from the cycle-clock anchor (it's an approximation and produced dates
+        // that disagreed between characters bidding the same plot). If chat didn't
+        // include a time, leave it for the placard capture to fill precisely.
         if (resultsUtc != null)
         {
             rec.ResultsAvailableUtc = resultsUtc;
             rec.ClaimDeadlineUtc = resultsUtc.Value + LottoCycle.ResultsLength;
-        }
-        else
-        {
-            rec.ResultsAvailableUtc = LottoCycle.ResultsStart(cycleId);
-            rec.ClaimDeadlineUtc = LottoCycle.ClaimDeadline(cycleId);
         }
 
         rec.LastSeenUtc = now;
@@ -433,10 +427,10 @@ public static class BidStore
             EntryNumber = entryNumber < 0 ? -1 : entryNumber,
             Notes = notes,
             Source = "manual",
-            Phase = LottoCycle.PhaseFor(DateTime.UtcNow),
-            ResultsAvailableUtc = LottoCycle.ResultsStart(cycleId),
-            ClaimDeadlineUtc = LottoCycle.ClaimDeadline(cycleId),
+            Phase = LottoPhase.Entry,
             LastSeenUtc = DateTime.UtcNow,
+            // Results date is left unknown for manual entries — it's filled precisely
+            // when the plot's placard is opened. We don't guess from the cycle clock.
         };
 
         // If the cycle has fully elapsed and no win was recorded, mark as lost.

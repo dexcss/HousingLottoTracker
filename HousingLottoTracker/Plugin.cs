@@ -443,45 +443,41 @@ public sealed class Plugin : IDalamudPlugin
             if (string.IsNullOrEmpty(text)) return;
 
             var lower = text.ToLowerInvariant();
-            var winWord = lower.Contains("congratulations") || lower.Contains("won the lottery")
-                          || lower.Contains("winning");
-            var housingWord = lower.Contains("plot") || lower.Contains("estate")
-                              || lower.Contains("house") || lower.Contains("land")
-                              || lower.Contains("residential");
 
-            var signboardOpen = GameGui.GetAddonByName("HousingSignBoard", 1) != nint.Zero;
+            // Only treat as a win on explicit congratulatory / claim wording. The word
+            // "winning" alone is NOT enough — it appears in entry-period dialogs like
+            // "the winning number will be drawn", which previously caused false wins.
+            var isWin = lower.Contains("congratulations")
+                        || lower.Contains("won the lottery")
+                        || lower.Contains("you have won")
+                        || lower.Contains("claim") && lower.Contains("winnings")
+                        || lower.Contains("entitled to purchase");
 
-            if (!winWord) return;
-            if (!housingWord && !signboardOpen) return;
+            // Explicitly ignore entry-confirmation dialogs.
+            var isEntryDialog = lower.Contains("wish to enter")
+                                || lower.Contains("submit a lottery entry")
+                                || lower.Contains("enter the lottery")
+                                || lower.Contains("deposit");
+
+            if (!isWin || isEntryDialog) return;
 
             var contentId = PlayerState.ContentId;
             if (contentId == 0) return;
 
-            // Prefer a bid in the current cycle; else the most recent pending bid for
-            // this character.
+            // Only mark a win for a bid in the CURRENT cycle (a win is claimed during
+            // that cycle's results period). Don't fall back to "most recent pending",
+            // which could mark an unrelated plot.
             var cycleId = LottoCycle.CycleIdFor(DateTime.UtcNow);
             BidRecord? rec = Config.Bids.Find(b =>
                 b.ContentId == contentId && b.EntryCycleId == cycleId &&
                 b.Outcome == LottoOutcome.Pending);
-
-            if (rec == null)
-            {
-                BidRecord? best = null;
-                foreach (var b in Config.Bids)
-                {
-                    if (b.ContentId != contentId) continue;
-                    if (b.Outcome != LottoOutcome.Pending) continue;
-                    if (best == null || b.EntryDateUtc > best.EntryDateUtc) best = b;
-                }
-                rec = best;
-            }
 
             if (rec == null) return;
 
             rec.Outcome = LottoOutcome.Won;
             rec.OutcomeRecordedUtc = DateTime.UtcNow;
             PersistBid(rec);
-            Log.Info($"Housing Lotto Tracker: auto-recorded WIN for {rec.CharacterDisplay} on {rec.LocationText}");
+            Log.Info($"Housing Lotto Tracker: auto-recorded WIN for {rec.CharacterDisplay} on {rec.LocationText} (prompt: {text})");
         }
         catch (Exception ex)
         {
