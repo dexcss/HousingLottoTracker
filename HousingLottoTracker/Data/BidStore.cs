@@ -52,7 +52,6 @@ public static class BidStore
         }
 
         var rec = keyMatch;
-        var isNew = false;
         if (rec == null)
         {
             // The "For Sale" placard does NOT reveal whether *you* bid on it — it
@@ -70,7 +69,6 @@ public static class BidStore
                 EntryCycleId = cycleId,
                 EntryDateUtc = now,
             };
-            isNew = true;
             bids.Add(rec);
         }
 
@@ -129,7 +127,6 @@ public static class BidStore
 
         rec.LastSeenUtc = now;
         rec.Source = "Live";
-        _ = isNew; // (kept for clarity / future telemetry)
         return rec;
     }
 
@@ -346,7 +343,11 @@ public static class BidStore
         }
         rec.Ward = ward;
         rec.Plot = plot;
-        rec.IsFreeCompany = info.IsFreeCompany;           // definitive from the game
+        // Tenant type is definitive from the game — but only overwrite when the game
+        // actually reported a known value (1 = FC, 2 = personal). An unexpected value
+        // (0 on odd states) must never clobber a manual FC/Personal correction.
+        if (info.TenantType == Game.PlacardSaleHook.TenantKind.FreeCompany) rec.IsFreeCompany = true;
+        else if (info.TenantType == Game.PlacardSaleHook.TenantKind.Personal) rec.IsFreeCompany = false;
         rec.Phase = info.InResults ? LottoPhase.Results : LottoPhase.Entry;
 
         if (resultsUtc != null)
@@ -360,21 +361,24 @@ public static class BidStore
     }
 
     // Lazily advance outcomes/timers for stale rows without needing a placard read
-    // (e.g. a bid whose claim window simply elapsed). Returns true if anything
-    // changed so the caller can persist.
-    public static bool TickOutcomes(List<BidRecord> bids)
+    // (e.g. a bid whose claim window simply elapsed). Returns the records that
+    // changed so the caller can persist just those.
+    public static List<BidRecord> TickOutcomes(List<BidRecord> bids)
     {
-        var changed = false;
+        var changed = new List<BidRecord>();
         var now = DateTime.UtcNow;
         foreach (var b in bids)
         {
             if (b.Outcome != LottoOutcome.Pending) continue;
             if (b.ClaimDeadlineUtc != null && now > b.ClaimDeadlineUtc.Value)
             {
-                // Only auto-resolve to Lost if we never saw a win signal.
-                b.Outcome = LottoOutcome.Lost;
+                // The claim/refund window elapsed without us ever observing a result.
+                // "Expired" is the honest label here — we didn't see a loss, so we
+                // must not claim the bid lost. (A real win that was never viewed on
+                // the placard also lands here; the user can correct it in the row.)
+                b.Outcome = LottoOutcome.Expired;
                 b.OutcomeRecordedUtc = now;
-                changed = true;
+                changed.Add(b);
             }
         }
         return changed;
@@ -386,6 +390,19 @@ public static class BidStore
     {
         var cd = Game.PlacardReader.CanonicalDistrict(district);
         return string.IsNullOrEmpty(cd) ? (district ?? string.Empty).Trim() : cd;
+    }
+
+    // In-memory variant of the cycle-id migration (used when shared storage is off):
+    // recompute each row's EntryCycleId from EntryDateUtc. Returns rows changed.
+    public static int NormalizeCycleIds(List<BidRecord> bids)
+    {
+        var changed = 0;
+        foreach (var b in bids)
+        {
+            var id = LottoCycle.CycleIdFor(b.EntryDateUtc);
+            if (b.EntryCycleId != id) { b.EntryCycleId = id; changed++; }
+        }
+        return changed;
     }
 
     // Build a bid from user-entered fields (backfilling a bid placed before the

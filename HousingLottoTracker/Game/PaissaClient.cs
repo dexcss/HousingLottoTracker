@@ -21,12 +21,19 @@ public sealed class PaissaClient : IDisposable
     public PaissaClient()
     {
         http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("HousingLottoTracker/1.0 (+dalamud)");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("HousingLottoTracker/1.1 (+dalamud)");
     }
 
     public void Dispose() => http.Dispose();
 
-    // --- response DTOs (subset of PaissaDB's schema) ---
+    // --- response DTOs (subset of PaissaDB's schema; see /openapi.json) ---
+    private sealed class WorldDetail
+    {
+        public ushort id { get; set; }
+        public string? name { get; set; }
+        public DistrictDetail[]? districts { get; set; }
+    }
+
     private sealed class DistrictDetail
     {
         public ushort district_id { get; set; }
@@ -107,65 +114,77 @@ public sealed class PaissaClient : IDisposable
     // Optional diagnostic sink (set by the plugin) so failures/oddities are visible.
     public Action<string>? Debug;
 
-    // Fetch open plots for one world + district. Returns an empty list on any error
-    // (network down, world has no data, etc.) so the caller degrades gracefully.
-    public async Task<List<OpenPlot>> GetOpenPlotsAsync(
-        ushort worldId, string worldName, string dataCenter, string region, ushort districtId)
+    // Fetch open plots for one world, covering all five districts in a single
+    // request. GET /worlds/{worldId} returns a WorldDetail whose districts[] embeds
+    // every DistrictDetail, so a rule spanning multiple districts costs one request
+    // instead of five. `neededDistricts` filters the response; empty = all.
+    // Returns an empty list on any error (network down, no data, etc.) so the
+    // caller degrades gracefully.
+    public async Task<List<OpenPlot>> GetWorldOpenPlotsAsync(
+        ushort worldId, string worldName, string dataCenter, string region, HashSet<ushort> neededDistricts)
     {
         var outList = new List<OpenPlot>();
         try
         {
-            var resp = await http.GetAsync($"{ApiBase}/worlds/{worldId}/{districtId}");
+            var resp = await http.GetAsync($"{ApiBase}/worlds/{worldId}");
             if (!resp.IsSuccessStatusCode)
             {
-                Debug?.Invoke($"PaissaDB {worldName}/{districtId}: HTTP {(int)resp.StatusCode}");
+                Debug?.Invoke($"PaissaDB {worldName}: HTTP {(int)resp.StatusCode}");
                 return outList;
             }
 
             var json = await resp.Content.ReadAsStringAsync();
-            var detail = JsonConvert.DeserializeObject<DistrictDetail>(json);
-            if (detail?.open_plots == null)
+            var world = JsonConvert.DeserializeObject<WorldDetail>(json);
+            if (world?.districts == null)
             {
-                Debug?.Invoke($"PaissaDB {worldName}/{districtId}: no open_plots in response");
+                Debug?.Invoke($"PaissaDB {worldName}: no districts in response");
                 return outList;
             }
 
             var lotteryCount = 0;
             var openForEntryCount = 0;
-            foreach (var op in detail.open_plots)
+            foreach (var d in world.districts)
             {
-                var isLottery = op.IsLottery();
-                var phase = op.PhaseValue();
-                if (isLottery) lotteryCount++;
-                if (isLottery && op.EntriesOpen()) openForEntryCount++;
+                if (neededDistricts.Count > 0 && !neededDistricts.Contains(d.district_id)) continue;
+                if (d.open_plots == null) continue;
 
-                outList.Add(new OpenPlot
+                foreach (var op in d.open_plots)
                 {
-                    WorldId = op.world_id,
-                    WorldName = worldName,
-                    DataCenter = dataCenter,
-                    Region = region,
-                    DistrictId = op.district_id,
-                    District = PlacardReader.DistrictDisplayName(op.district_id),
-                    Ward = op.ward_number + 1,    // to 1-based
-                    Plot = op.plot_number + 1,
-                    Size = op.size switch
+                    var isLottery = op.IsLottery();
+                    var phase = op.PhaseValue();
+                    if (isLottery) lotteryCount++;
+                    if (isLottery && op.EntriesOpen()) openForEntryCount++;
+
+                    outList.Add(new OpenPlot
                     {
-                        0 => LottoPlotSize.Small,
-                        1 => LottoPlotSize.Medium,
-                        2 => LottoPlotSize.Large,
-                        _ => LottoPlotSize.Unknown,
-                    },
-                    IsLottery = isLottery,
-                    LottoPhaseValue = phase,
-                });
+                        WorldId = op.world_id != 0 ? op.world_id : worldId,
+                        WorldName = worldName,
+                        DataCenter = dataCenter,
+                        Region = region,
+                        DistrictId = op.district_id,
+                        District = PlacardReader.DistrictDisplayName(op.district_id),
+                        Ward = op.ward_number + 1,    // to 1-based
+                        Plot = op.plot_number + 1,
+                        Size = op.size switch
+                        {
+                            0 => LottoPlotSize.Small,
+                            1 => LottoPlotSize.Medium,
+                            2 => LottoPlotSize.Large,
+                            _ => LottoPlotSize.Unknown,
+                        },
+                        IsLottery = isLottery,
+                        LottoPhaseValue = phase,
+                        Price = op.price,
+                        LottoEntries = op.lotto_entries.HasValue ? (int)op.lotto_entries.Value : -1,
+                    });
+                }
             }
 
-            Debug?.Invoke($"PaissaDB {worldName}/{PlacardReader.DistrictDisplayName(districtId)}: {detail.open_plots.Length} open, {lotteryCount} lottery, {openForEntryCount} accepting entries");
+            Debug?.Invoke($"PaissaDB {worldName}: {world.districts.Length} districts, {lotteryCount} lottery plots, {openForEntryCount} accepting entries");
         }
         catch (Exception ex)
         {
-            Debug?.Invoke($"PaissaDB {worldName}/{districtId} failed: {ex.Message}");
+            Debug?.Invoke($"PaissaDB {worldName} failed: {ex.Message}");
         }
         return outList;
     }

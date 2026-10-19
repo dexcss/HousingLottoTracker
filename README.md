@@ -24,7 +24,7 @@ Capture is passive — you don't type anything for a normal bid.
 - **For bids placed before installing**, open **Duty → Timers → Estate → Housing Lottery Status** to record the entry, then open that plot's placard to lock in the precise results date. Opening a placard never creates a row on its own — it only enriches a bid already recorded, so browsing for-sale plots won't clutter the list.
 - **Add bid** lets you enter one fully by hand, for plots you can't currently visit.
 
-Wins are detected automatically when the results placard congratulates you.
+Wins are detected automatically when the results placard congratulates you — the bid flips to Won, and a toast notification tells you to go claim. When results become available for a pending bid, you get a one-time notification as well.
 
 ## Travel & login buttons
 
@@ -41,7 +41,7 @@ Create watch rules in **Settings → Alerts** to be notified when a matching plo
 
 Rules can be broad or specific — *"any Shirogane Plot 60, any server"* or *"Shirogane Plot 60, Ward 26, on Ultros."* You can multi-select plots, wards, sizes, worlds, data centers, and regions; a blank filter means "any." Plot and ward fields accept ranges, so `31-60` covers a whole subdivision.
 
-When a match appears a popup lists it (with a Travel button if Lifestream is installed). Hitting **Seen** acknowledges that plot so it won't alert again until it fills and re-opens. You can have alerts pop only at login or whenever a new match appears, and set the check interval. Coverage depends on other players reporting plots, exactly like PaissaHouse.
+When a match appears a popup lists it (with a Travel button if Lifestream is installed, plus the plot's price and entrant count when PaissaDB reports them). Hitting **Seen** acknowledges that plot so it won't alert again until it fills and re-opens. You can have alerts pop only at login or whenever a new match appears, and set the check interval. Coverage depends on other players reporting plots, exactly like PaissaHouse.
 
 The **Alerts** button on the main window opens the alerts page any time (showing a count when matches are waiting). From there, **Re-check now** forces an immediate PaissaDB check instead of waiting for the interval, and **Clear seen & re-check** forgets every acknowledgement and re-checks — so anything still open that matches your rules will alert again.
 
@@ -49,6 +49,8 @@ The **Alerts** button on the main window opens the alerts page any time (showing
 
 - The game doesn't store your bid number after entry — it's captured live from the confirmation. If a bid is added another way, the number is an editable field.
 - Results dates come from the game's own data (the entry confirmation or the placard deadline). A bid recorded only from the Timers panel shows "date unknown" until you open its placard once.
+- The window header shows where the global 9-day lottery schedule currently sits (5-day entry, 4-day results); per-row dates come from the game and are exact.
+- **Reset all outcomes to Pending** (Settings, above the clear-all button) marks every recorded outcome Pending again — the cleanup for rows marked Won/Lost by the pre-1.0.3.4 win detector.
 - Shared storage is on by default: all clients on the same Windows user share one dataset regardless of `--roamingPath`, with multi-client-safe merging. Turn it off in Settings for a per-install config.
 
 ## Building

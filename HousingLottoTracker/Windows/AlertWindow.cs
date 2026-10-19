@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
@@ -59,6 +60,10 @@ public class AlertWindow : Window
             var p = a.Plot;
             ImGui.TextUnformatted($"{p.District} Ward {p.Ward}, Plot {p.Plot}  ({p.SizeText})");
             ImGui.TextDisabled($"{p.WorldName} · {p.DataCenter} · {p.Region} · {p.PhaseText}");
+            var extras = new List<string>();
+            if (p.Price > 0) extras.Add($"{p.Price:N0} gil");
+            if (p.LottoEntries >= 0) extras.Add(p.LottoEntries == 1 ? "1 entrant" : $"{p.LottoEntries} entrants");
+            if (extras.Count > 0) ImGui.TextDisabled(string.Join(" · ", extras));
             ImGui.TextDisabled($"matches: {a.RuleLabel}");
 
             if (ImGui.Button($"Seen###seen{a.AckKey}"))

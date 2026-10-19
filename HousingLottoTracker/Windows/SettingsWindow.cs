@@ -13,6 +13,7 @@ public class SettingsWindow : Window
 {
     private readonly Plugin plugin;
     private bool confirmClear;
+    private bool confirmResetOutcomes;
 
     public SettingsWindow(Plugin plugin)
         : base("Housing Lotto Tracker — Settings###HousingLottoSettings")
@@ -240,6 +241,30 @@ public class SettingsWindow : Window
 
         if (ImGui.CollapsingHeader("Alerts"))
             DrawAlerts(cfg);
+
+        ImGui.Separator();
+        if (!confirmResetOutcomes)
+        {
+            if (ImGui.Button("Reset all outcomes to Pending"))
+                confirmResetOutcomes = true;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Marks every recorded outcome Pending again.\nCleanup for rows marked Won/Lost by the old win detector (pre-1.0.3.4).");
+        }
+        else
+        {
+            var affected = 0;
+            foreach (var b in plugin.Config.Bids)
+                if (b.Outcome != LottoOutcome.Pending) affected++;
+            ImGui.TextColored(new Vector4(1f, 0.85f, 0.4f, 1f),
+                affected == 1 ? "Set the outcome of 1 bid back to Pending?" : $"Set the outcome of {affected} bids back to Pending?");
+            if (ImGui.Button("Yes, reset outcomes"))
+            {
+                plugin.ResetAllOutcomes();
+                confirmResetOutcomes = false;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel")) confirmResetOutcomes = false;
+        }
 
         ImGui.Separator();
         if (!confirmClear)

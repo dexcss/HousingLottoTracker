@@ -24,9 +24,11 @@ public static class ChatLotteryParser
         public bool IsFreeCompany;       // detected from FC-bid wording, if present
     }
 
-    // "submitted a lottery entry for plot 38, ward 30, Shirogane"
+    // "submitted a lottery entry for plot 38, ward 30, Shirogane." (current clients)
+    // Tolerant of the older wording too — "for plot 3 ward 27 of the Empyreum." —
+    // by making the commas optional and skipping an "of the" before the district.
     private static readonly Regex EntryRx = new(
-        @"lottery entry for plot\s+(?<plot>\d+),\s*ward\s+(?<ward>\d+),\s*(?<district>[A-Za-z'’\- ]+?)\.",
+        @"lottery entry for plot\s+(?<plot>\d+)\s*,?\s*ward\s+(?<ward>\d+)\s*,?\s*(?:of\s+the\s+)?(?<district>[A-Za-z'’\- ]+?)\.",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "Your lottery number is 71"

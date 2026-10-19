@@ -69,6 +69,66 @@ public sealed class SharedStore
         }
     }
 
+    // One-time migration: recompute every stored bid's EntryCycleId from its
+    // EntryDateUtc against the current cycle anchor. Used when the anchor itself is
+    // corrected (e.g. the 1.1.0.0 one-day fix) so stored rows keep matching freshly
+    // captured ones instead of duplicating. Returns how many rows changed.
+    public int NormalizeCycleIds()
+    {
+        lock (GateLock)
+        {
+            for (var attempt = 0; attempt < 8; attempt++)
+            {
+                FileStream? fs = null;
+                try
+                {
+                    if (!File.Exists(path)) return 0;
+                    fs = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+                    StoreFile store;
+                    using (var sr = new StreamReader(fs, leaveOpen: true))
+                    {
+                        var json = sr.ReadToEnd();
+                        store = string.IsNullOrWhiteSpace(json)
+                            ? new StoreFile()
+                            : (JsonConvert.DeserializeObject<StoreFile>(json) ?? new StoreFile());
+                    }
+
+                    var changed = 0;
+                    foreach (var b in store.Bids)
+                    {
+                        var id = LottoCycle.CycleIdFor(b.EntryDateUtc);
+                        if (b.EntryCycleId != id) { b.EntryCycleId = id; changed++; }
+                    }
+                    if (changed == 0) { fs.Dispose(); return 0; }
+
+                    var outJson = JsonConvert.SerializeObject(store, Formatting.Indented);
+                    fs.SetLength(0);
+                    fs.Position = 0;
+                    using (var sw = new StreamWriter(fs, leaveOpen: true))
+                    {
+                        sw.Write(outJson);
+                        sw.Flush();
+                    }
+                    fs.Flush(true);
+                    fs.Dispose();
+                    return changed;
+                }
+                catch (IOException)
+                {
+                    fs?.Dispose();
+                    Thread.Sleep(25 + attempt * 25);
+                }
+                catch (Exception)
+                {
+                    fs?.Dispose();
+                    return 0;
+                }
+            }
+            return 0;
+        }
+    }
+
     public void UpsertBid(BidRecord record)
     {
         lock (GateLock)

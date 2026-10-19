@@ -26,9 +26,6 @@ public sealed class AlertWatcher : IDisposable
     private readonly Dictionary<string, ActiveAlert> active = new();
     private readonly object gate = new();
 
-    // Keys of plots seen open in the most recent successful poll, to expire acks.
-    private HashSet<string> lastOpenPlotKeys = new();
-
     private DateTime lastPoll = DateTime.MinValue;
     private bool polling;
 
@@ -67,18 +64,17 @@ public sealed class AlertWatcher : IDisposable
     public int ActiveCount { get { lock (gate) return active.Count; } }
 
     // Acknowledge one alert: record its key so it won't re-fire until the plot
-    // re-opens, and remove it from the active set.
+    // re-opens, and remove it from the active set. The ack list is shared with the
+    // poll task, so mutate it under the same gate the poller reads it with.
     public void Acknowledge(string ackKey)
     {
         lock (gate)
         {
             active.Remove(ackKey);
+            if (!cfg.AcknowledgedAlerts.Contains(ackKey))
+                cfg.AcknowledgedAlerts.Add(ackKey);
         }
-        if (!cfg.AcknowledgedAlerts.Contains(ackKey))
-        {
-            cfg.AcknowledgedAlerts.Add(ackKey);
-            saveConfig();
-        }
+        saveConfig();
     }
 
     public void AcknowledgeAll()
@@ -159,19 +155,40 @@ public sealed class AlertWatcher : IDisposable
             var rules = cfg.AlertRules.Where(r => r.Enabled).ToList();
             if (rules.Count == 0) return;
 
-            // Determine the (world, district) pairs we actually need to query, from
-            // the union of all enabled rules. This keeps request counts bounded.
-            var targets = BuildTargets(rules);
-            if (targets.Count == 0) return;
+            // Determine the query set from the union of all enabled rules, grouped
+            // by world: GET /worlds/{id} returns every district in one request, so
+            // a rule spanning districts costs one request instead of five. This
+            // keeps request counts bounded.
+            var worldTargets = new Dictionary<ushort, (string Name, string DC, string Region, HashSet<ushort> Districts)>();
+            foreach (var (wid, wname, dc, region, districtId) in BuildTargets(rules))
+            {
+                if (!worldTargets.TryGetValue(wid, out var t))
+                {
+                    t = (wname, dc, region, new HashSet<ushort>());
+                    worldTargets[wid] = t;
+                }
+                t.Districts.Add(districtId);
+            }
+            if (worldTargets.Count == 0) return;
 
             var allOpen = new List<OpenPlot>();
-            foreach (var (wid, wname, dc, region, districtId) in targets)
-            {
-                var plots = await client.GetOpenPlotsAsync(wid, wname, dc, region, districtId);
-                allOpen.AddRange(plots);
-            }
 
-            log.Info($"[HLT alerts] polled {targets.Count} world/district targets for {rules.Count} rule(s); {allOpen.Count} open plots, {allOpen.Count(p => p.IsLottery)} lottery.");
+            // Bounded parallel fetch: up to four worlds in flight at once.
+            using var fetchGate = new SemaphoreSlim(4, 4);
+            var fetchTasks = worldTargets.Select(async kv =>
+            {
+                await fetchGate.WaitAsync();
+                try
+                {
+                    var (name, dc, region, districts) = kv.Value;
+                    var plots = await client.GetWorldOpenPlotsAsync(kv.Key, name, dc, region, districts);
+                    lock (allOpen) allOpen.AddRange(plots);
+                }
+                finally { fetchGate.Release(); }
+            }).ToList();
+            await Task.WhenAll(fetchTasks);
+
+            log.Info($"[HLT alerts] polled {worldTargets.Count} world(s) for {rules.Count} rule(s); {allOpen.Count} open plots, {allOpen.Count(p => p.IsLottery)} lottery.");
 
             var openKeys = new HashSet<string>(allOpen.Select(p => p.Key));
 
@@ -235,8 +252,6 @@ public sealed class AlertWatcher : IDisposable
             }
 
             log.Info($"[HLT alerts] {newCount} new alert(s), {suppressedCount} already seen, {phaseSkipped} skipped (results/unavailable phase), {active.Count} active total.");
-
-            lastOpenPlotKeys = openKeys;
         }
         catch (Exception ex)
         {

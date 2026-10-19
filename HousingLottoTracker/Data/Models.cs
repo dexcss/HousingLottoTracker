@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace HousingLottoTracker.Data;
 
@@ -83,10 +84,12 @@ public class BidRecord
     public string Notes = string.Empty;
 
     // Stable key used by the UI and the shared store for upsert/merge.
-    public string Key => $"{ContentId}:{TerritoryTypeId}:{Ward}:{Plot}:{EntryCycleId}";
+    [JsonIgnore] public string Key => $"{ContentId}:{TerritoryTypeId}:{Ward}:{Plot}:{EntryCycleId}";
 
-    // --- Derived display helpers ---
-    public string SizeText => Size switch
+    // --- Derived display helpers (computed; excluded from serialization so saved
+    // configs stay clean — Newtonsoft would otherwise write every one of these as
+    // a duplicate of the fields they derive from) ---
+    [JsonIgnore] public string SizeText => Size switch
     {
         LottoPlotSize.Small => "Small",
         LottoPlotSize.Medium => "Medium",
@@ -95,16 +98,16 @@ public class BidRecord
         _ => "?",
     };
 
-    public string TypeText => IsFreeCompany ? "FC" : "Personal";
+    [JsonIgnore] public string TypeText => IsFreeCompany ? "FC" : "Personal";
 
-    public string PhaseText => Phase switch
+    [JsonIgnore] public string PhaseText => Phase switch
     {
         LottoPhase.Entry => "Entry",
         LottoPhase.Results => "Results",
         _ => "?",
     };
 
-    public string OutcomeText => Outcome switch
+    [JsonIgnore] public string OutcomeText => Outcome switch
     {
         LottoOutcome.Won => "Won",
         LottoOutcome.Lost => "Lost",
@@ -113,7 +116,7 @@ public class BidRecord
         _ => "Pending",
     };
 
-    public string LocationText
+    [JsonIgnore] public string LocationText
     {
         get
         {
@@ -122,12 +125,12 @@ public class BidRecord
         }
     }
 
-    public string CharacterDisplay => string.IsNullOrEmpty(WorldName)
+    [JsonIgnore] public string CharacterDisplay => string.IsNullOrEmpty(WorldName)
         ? CharacterName
         : $"{CharacterName} @ {WorldName}";
 
     // Time until results open (>= zero) or zero if already open/unknown.
-    public TimeSpan TimeUntilResults
+    [JsonIgnore] public TimeSpan TimeUntilResults
     {
         get
         {
@@ -138,7 +141,7 @@ public class BidRecord
     }
 
     // Time until the claim/refund window closes (>= zero) once in results.
-    public TimeSpan TimeUntilClaimDeadline
+    [JsonIgnore] public TimeSpan TimeUntilClaimDeadline
     {
         get
         {
@@ -148,5 +151,5 @@ public class BidRecord
         }
     }
 
-    public bool ResultsOpen => ResultsAvailableUtc != null && DateTime.UtcNow >= ResultsAvailableUtc.Value;
+    [JsonIgnore] public bool ResultsOpen => ResultsAvailableUtc != null && DateTime.UtcNow >= ResultsAvailableUtc.Value;
 }

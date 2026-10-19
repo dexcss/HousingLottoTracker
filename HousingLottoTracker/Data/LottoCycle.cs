@@ -19,11 +19,13 @@ public static class LottoCycle
     public static readonly TimeSpan ResultsLength = TimeSpan.FromDays(4);
     public static readonly TimeSpan CycleLength = TimeSpan.FromDays(9);
 
-    // A known entry-period start. 2026-06-18 ~15:00 UTC corresponds to the entry
-    // window that (per the schedule) runs through 2026-06-23. Anchoring here lets us
-    // index every other cycle by stepping +/- 9 days. The exact hour only nudges the
-    // day boundary; day-level results are unaffected for practical use.
-    public static readonly DateTime Anchor = new DateTime(2026, 6, 18, 15, 0, 0, DateTimeKind.Utc);
+    // A known entry-period start. 2026-06-19 15:00 UTC is a verified anchor: the
+    // published October 2026 schedule (Polygon) has entry periods beginning
+    // Sep 26, Oct 5, and Oct 14, 2026 — all exactly 9*k days from this instant —
+    // and periods flip at the daily reset (15:00 UTC / 8:00 a.m. PT).
+    // (The original 06-18 anchor was one day early and was corrected in 1.1.0.0;
+    // stored cycle ids are migrated from EntryDateUtc on load.)
+    public static readonly DateTime Anchor = new DateTime(2026, 6, 19, 15, 0, 0, DateTimeKind.Utc);
 
     // Cycle id = number of whole 9-day blocks between the anchor and the instant.
     public static long CycleIdFor(DateTime utc)

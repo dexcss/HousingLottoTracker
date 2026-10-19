@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Windowing;
 using HousingLottoTracker.Data;
 using HousingLottoTracker.Game;
@@ -26,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
     [PluginService] internal static IGameInteropProvider InteropProvider { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
+    [PluginService] internal static INotificationManager Notifications { get; private set; } = null!;
 
     private const string CommandName = "/hlt";
     private const string CommandAlias = "/lotto";
@@ -42,6 +45,7 @@ public sealed class Plugin : IDalamudPlugin
     public AlertWatcher? Alerts => alertWatcher;
     private int lastAlertCount;
     private bool loginPopupPending;
+    private readonly HashSet<string> resultsNotified = new();
 
     public string AccountKey { get; }
 
@@ -98,6 +102,8 @@ public sealed class Plugin : IDalamudPlugin
         // signature can't be found (e.g. after a patch), this no-ops and the
         // text-scrape path in Poll() keeps working.
         saleHook = new PlacardSaleHook(InteropProvider, Log, OnPlacardSaleInfo);
+
+        Log.Info($"Housing Lotto Tracker v{GetType().Assembly.GetName().Version} initialised (account key: {AccountKey}).");
     }
 
     public void Dispose()
@@ -146,12 +152,22 @@ public sealed class Plugin : IDalamudPlugin
         if (Config.UseSharedStorage)
         {
             Store = new SharedStore(true, Config.SharedStoragePathOverride);
+            // Migrate cycle ids if the anchor was corrected (1.1.0.0), then reload.
+            var fixedRows = Store.NormalizeCycleIds();
             Config.Bids = Store.LoadAll();
+            if (fixedRows > 0)
+                Log.Info($"Housing Lotto Tracker: normalized {fixedRows} stored bid(s) to the corrected lottery cycle anchor.");
             Log.Info($"Housing Lotto Tracker using shared storage: {Store.Path_}");
         }
         else
         {
             Store = null;
+            var fixedRows = BidStore.NormalizeCycleIds(Config.Bids);
+            if (fixedRows > 0)
+            {
+                Config.Save();
+                Log.Info($"Housing Lotto Tracker: normalized {fixedRows} stored bid(s) to the corrected lottery cycle anchor.");
+            }
         }
         lastSharedRefresh = DateTime.UtcNow;
     }
@@ -242,6 +258,48 @@ public sealed class Plugin : IDalamudPlugin
         return "";
     }
 
+    // Reset every recorded outcome back to Pending. Cleanup for rows whose outcome
+    // was recorded by the pre-1.0.3.4 win detector (which could mark false "Won"s).
+    // Returns how many rows were reset.
+    public int ResetAllOutcomes()
+    {
+        var n = 0;
+        foreach (var b in Config.Bids)
+        {
+            if (b.Outcome == LottoOutcome.Pending) continue;
+            b.Outcome = LottoOutcome.Pending;
+            b.OutcomeRecordedUtc = null;
+            PersistBid(b);
+            n++;
+        }
+        if (n > 0)
+            Log.Info($"Housing Lotto Tracker: reset {n} bid outcome(s) to Pending.");
+        return n;
+    }
+
+    // One-time (per session) notice when a pending bid's results become available,
+    // so the user knows to view the placard.
+    private void NotifyResultsOpen()
+    {
+        foreach (var b in Config.Bids)
+        {
+            if (b.Outcome != LottoOutcome.Pending || !b.ResultsOpen) continue;
+            if (!resultsNotified.Add(b.Key)) continue;
+
+            Log.Info($"Housing Lotto Tracker: results are in for {b.LocationText} ({b.CharacterDisplay}) — view the placard to see the outcome.");
+            try
+            {
+                Notifications?.AddNotification(new Notification
+                {
+                    Title = "Housing lottery results are in",
+                    Content = $"{b.LocationText} ({b.CharacterDisplay}) — view the placard to see if you won.",
+                    Type = NotificationType.Info,
+                });
+            }
+            catch { /* notifications are best-effort */ }
+        }
+    }
+
     private void OnLogin()
     {
         lastPoll = DateTime.MinValue;
@@ -260,17 +318,22 @@ public sealed class Plugin : IDalamudPlugin
             catch (Exception ex) { Log.Error(ex, "shared refresh failed"); }
         }
 
-        // Advance stale outcomes (claim windows that simply elapsed).
+        // Advance stale outcomes (claim windows that simply elapsed). Persist only
+        // the rows that actually changed.
         if (DateTime.UtcNow - lastOutcomeTick >= OutcomeTickInterval)
         {
             lastOutcomeTick = DateTime.UtcNow;
             try
             {
-                if (BidStore.TickOutcomes(Config.Bids))
-                    foreach (var b in Config.Bids) PersistBid(b);
+                var changed = BidStore.TickOutcomes(Config.Bids);
+                foreach (var b in changed) PersistBid(b);
             }
             catch (Exception ex) { Log.Error(ex, "outcome tick failed"); }
         }
+
+        // One-time notice when a pending bid's results become available.
+        try { NotifyResultsOpen(); }
+        catch (Exception ex) { Log.Error(ex, "results notice failed"); }
 
         // Alert polling + popup surfacing.
         try
@@ -447,11 +510,21 @@ public sealed class Plugin : IDalamudPlugin
             // Only treat as a win on explicit congratulatory / claim wording. The word
             // "winning" alone is NOT enough — it appears in entry-period dialogs like
             // "the winning number will be drawn", which previously caused false wins.
+            //
+            // Phrases matched against the researched real claim prompt ("Congratulations!
+            // You are the winner of the lottery for this plot. Finalize your purchase and
+            // claim this plot of land?"): "winner of"+"lottery" and "finalize your
+            // purchase" hit that dialog directly; the others cover older/alternate
+            // wordings. If a bid ever false-wins (or a real win is missed), get the
+            // verbatim prompt from the auto-recorded WIN log line below and adjust
+            // this list to match it exactly — never guess.
             var isWin = lower.Contains("congratulations")
                         || lower.Contains("won the lottery")
+                        || lower.Contains("winner of") && lower.Contains("lottery")
                         || lower.Contains("you have won")
                         || lower.Contains("claim") && lower.Contains("winnings")
-                        || lower.Contains("entitled to purchase");
+                        || lower.Contains("entitled to purchase")
+                        || lower.Contains("finalize your purchase");
 
             // Explicitly ignore entry-confirmation dialogs.
             var isEntryDialog = lower.Contains("wish to enter")
@@ -478,6 +551,16 @@ public sealed class Plugin : IDalamudPlugin
             rec.OutcomeRecordedUtc = DateTime.UtcNow;
             PersistBid(rec);
             Log.Info($"Housing Lotto Tracker: auto-recorded WIN for {rec.CharacterDisplay} on {rec.LocationText} (prompt: {text})");
+            try
+            {
+                Notifications?.AddNotification(new Notification
+                {
+                    Title = "Housing lottery WON!",
+                    Content = $"{rec.LocationText} — {rec.CharacterDisplay}. Go claim the plot before the claim window closes!",
+                    Type = NotificationType.Success,
+                });
+            }
+            catch { /* notifications are best-effort */ }
         }
         catch (Exception ex)
         {

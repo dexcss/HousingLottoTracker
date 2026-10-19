@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Memory;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -498,21 +500,44 @@ public static unsafe class PlacardReader
     }
 
     // Read the prompt text from a SelectYesno addon (used for win auto-detect).
+    // Preferred source is the addon's AtkValue[0] — the same string the game uses to
+    // fill the dialog, immune to node-layout changes — with the longest text node as
+    // a fallback (the prompt is always the longest; this avoids grabbing a stray
+    // component label).
     public static string ReadSelectYesnoPrompt(nint addonPtr)
     {
         if (addonPtr == nint.Zero) return string.Empty;
         var addon = (AtkUnitBase*)addonPtr;
         if (addon == null) return string.Empty;
 
+        try
+        {
+            if (addon->AtkValuesCount > 0 && addon->AtkValues != null)
+            {
+                ref var v = ref addon->AtkValues[0];
+                if (v.Type == AtkValueType.String)
+                {
+                    var ptr = v.String.Value;
+                    if (ptr != null)
+                    {
+                        var s = MemoryHelper.ReadSeStringNullTerminated((nint)ptr).TextValue;
+                        if (!string.IsNullOrWhiteSpace(s)) return s;
+                    }
+                }
+            }
+        }
+        catch { /* fall through to node scrape */ }
+
+        string? best = null;
         for (var i = 0; i < addon->UldManager.NodeListCount; i++)
         {
             var node = addon->UldManager.NodeList[i];
             if (node == null || node->Type != NodeType.Text) continue;
             var t = ((AtkTextNode*)node)->NodeText.ToString();
-            if (!string.IsNullOrWhiteSpace(t) && t.Length > 10)
-                return t;
+            if (string.IsNullOrWhiteSpace(t) || t.Length <= 10) continue;
+            if (best == null || t.Length > best.Length) best = t;
         }
-        return string.Empty;
+        return best ?? string.Empty;
     }
 
     // Concatenate all visible text nodes of an addon into one blob (newline-joined).

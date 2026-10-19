@@ -163,6 +163,17 @@ public class MainWindow : Window
             cfg.HidePastCycles = hidePast;
             cfg.Save();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Hide bids whose outcome is known and negative (lost/expired/claimed).");
+
+        // Where the global lottery cycle currently sits (from the verified schedule).
+        var cycleId = LottoCycle.CycleIdFor(DateTime.UtcNow);
+        var phaseLine = LottoCycle.PhaseFor(DateTime.UtcNow) == LottoPhase.Entry
+            ? $"Entry period — results open {LottoCycle.ResultsStart(cycleId).ToLocalTime():ddd MMM d, HH:mm}"
+            : $"Results period — next entry opens {LottoCycle.CycleStart(cycleId + 1).ToLocalTime():ddd MMM d, HH:mm}";
+        ImGui.TextDisabled(phaseLine);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("From the global 9-day lottery schedule (5-day entry, 4-day results).\nPer-plot dates in rows come from the game and are exact.");
 
         if (showAddForm)
         {
@@ -323,7 +334,10 @@ public class MainWindow : Window
                 b.CharacterName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
                 b.WorldName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
                 b.District.Contains(s, StringComparison.OrdinalIgnoreCase) ||
-                b.Region.Contains(s, StringComparison.OrdinalIgnoreCase));
+                b.Region.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                b.Notes.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                b.Ward.ToString().Contains(s, StringComparison.Ordinal) ||
+                b.Plot.ToString().Contains(s, StringComparison.Ordinal));
         }
 
         var list = q.ToList();
@@ -660,7 +674,7 @@ public class MainWindow : Window
 
         // Outcome override.
         ImGui.TextUnformatted("Outcome:");
-        var outcomes = new[] { LottoOutcome.Pending, LottoOutcome.Won, LottoOutcome.Lost, LottoOutcome.Claimed };
+        var outcomes = new[] { LottoOutcome.Pending, LottoOutcome.Won, LottoOutcome.Lost, LottoOutcome.Claimed, LottoOutcome.Expired };
         for (var oi = 0; oi < outcomes.Length; oi++)
         {
             var oc = outcomes[oi];

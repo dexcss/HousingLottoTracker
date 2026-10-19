@@ -18,6 +18,8 @@ public class OpenPlot
     public int Plot;          // 1-based for display
     public LottoPlotSize Size = LottoPlotSize.Unknown;
     public bool IsLottery;
+    public uint Price;        // gil, 0 = unknown
+    public int LottoEntries = -1;   // reported entrant count, -1 = unknown
 
     // Lottery phase from PaissaDB: 1 = entries open, 2 = results period,
     // 3 = unavailable, -1 = unknown/not reported.
